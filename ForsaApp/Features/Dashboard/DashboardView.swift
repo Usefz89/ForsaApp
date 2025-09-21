@@ -28,6 +28,9 @@ struct DashboardView: View {
                     // Quick Actions
                     quickActionsView
 
+                    // Investment Pies Section
+                    investmentPiesView
+
                     // Holdings Section
                     holdingsView
 
@@ -50,6 +53,8 @@ struct DashboardView: View {
 
     private var headerView: some View {
         HStack {
+            ForsaLogo(size: .small, style: .iconOnly)
+
             VStack(alignment: .leading, spacing: 4) {
                 Text("Good morning,")
                     .font(.callout)
@@ -242,14 +247,31 @@ struct DashboardView: View {
                     // Navigate to markets
                 }
 
-                QuickActionCard(
-                    title: "Create Pie",
-                    subtitle: "Build a portfolio",
-                    icon: "chart.pie.fill",
-                    color: .primaryPurple
-                ) {
-                    // Navigate to pie creation
+                NavigationLink(destination: PiesView()) {
+                    ForsaCard(padding: EdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 16)) {
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack {
+                                Image(systemName: "chart.pie.fill")
+                                    .font(.title2)
+                                    .foregroundColor(.primaryPurple)
+
+                                Spacer()
+                            }
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("My Pies")
+                                    .font(.calloutMedium)
+                                    .foregroundColor(.textPrimary)
+
+                                Text("Manage portfolios")
+                                    .font(.caption1)
+                                    .foregroundColor(.textSecondary)
+                                    .lineLimit(2)
+                            }
+                        }
+                    }
                 }
+                .buttonStyle(PlainButtonStyle())
 
                 QuickActionCard(
                     title: "Deposit Funds",
@@ -291,6 +313,60 @@ struct DashboardView: View {
             LazyVStack(spacing: 12) {
                 ForEach(viewModel.topHoldings) { holding in
                     HoldingRowView(holding: holding)
+                }
+            }
+        }
+    }
+
+    private var investmentPiesView: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Text("Investment Pies")
+                    .font(.headline)
+                    .foregroundColor(.textPrimary)
+
+                Spacer()
+
+                NavigationLink(destination: PiesView()) {
+                    Text("View All")
+                        .font(.callout)
+                        .foregroundColor(.primaryPurple)
+                }
+            }
+
+            if viewModel.investmentPies.isEmpty {
+                ForsaCard {
+                    VStack(spacing: 16) {
+                        Image(systemName: "chart.pie")
+                            .font(.title2)
+                            .foregroundColor(.textMuted)
+
+                        VStack(spacing: 8) {
+                            Text("No Investment Pies")
+                                .font(.calloutMedium)
+                                .foregroundColor(.textPrimary)
+
+                            Text("Create diversified portfolios with automatic rebalancing")
+                                .font(.caption1)
+                                .foregroundColor(.textSecondary)
+                                .multilineTextAlignment(.center)
+                        }
+
+                        NavigationLink(destination: PieCreationView()) {
+                            ForsaButton("Create Your First Pie", style: .primary, size: .medium) { }
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+                    .padding(.vertical, 20)
+                }
+            } else {
+                LazyVStack(spacing: 12) {
+                    ForEach(viewModel.investmentPies.prefix(2)) { pie in
+                        NavigationLink(destination: PieDetailView(pie: pie)) {
+                            DashboardPieCard(pie: pie)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
                 }
             }
         }
@@ -479,6 +555,86 @@ struct PortfolioDetailView: View {
     var body: some View {
         Text("Portfolio Detail View")
             .navigationTitle("Portfolio")
+    }
+}
+
+struct DashboardPieCard: View {
+    let pie: InvestmentPie
+
+    var body: some View {
+        ForsaCard {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(pie.name)
+                            .font(.calloutMedium)
+                            .foregroundColor(.textPrimary)
+                            .lineLimit(1)
+
+                        if let description = pie.description {
+                            Text(description)
+                                .font(.caption1)
+                                .foregroundColor(.textSecondary)
+                                .lineLimit(1)
+                        }
+                    }
+
+                    Spacer()
+
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text("$\(String(format: "%.0f", pie.totalInvested))")
+                            .font(.calloutMedium)
+                            .foregroundColor(.textPrimary)
+
+                        Text("+12.4%") // Mock performance
+                            .font(.caption1)
+                            .fontWeight(.medium)
+                            .foregroundColor(.gainGreen)
+                    }
+                }
+
+                // Allocation preview
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(pie.allocations.prefix(4)) { allocation in
+                            HStack(spacing: 4) {
+                                Circle()
+                                    .fill(Color.primaryPurple.opacity(0.1))
+                                    .frame(width: 16, height: 16)
+                                    .overlay(
+                                        Text(String(allocation.symbol.prefix(1)))
+                                            .font(.caption2)
+                                            .fontWeight(.semibold)
+                                            .foregroundColor(.primaryPurple)
+                                    )
+
+                                Text(allocation.symbol)
+                                    .font(.caption1)
+                                    .foregroundColor(.textSecondary)
+                            }
+                        }
+
+                        if pie.allocations.count > 4 {
+                            Text("+\(pie.allocations.count - 4)")
+                                .font(.caption2)
+                                .foregroundColor(.textMuted)
+                        }
+                    }
+                }
+
+                if pie.autoInvestEnabled {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.clockwise.circle.fill")
+                            .font(.caption1)
+                            .foregroundColor(.primaryGreen)
+
+                        Text("Auto-investing")
+                            .font(.caption1)
+                            .foregroundColor(.primaryGreen)
+                    }
+                }
+            }
+        }
     }
 }
 

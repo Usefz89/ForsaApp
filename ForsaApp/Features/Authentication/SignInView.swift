@@ -28,15 +28,7 @@ struct SignInView: View {
                     // Header
                     VStack(spacing: 16) {
                         // Logo
-                        ZStack {
-                            Circle()
-                                .fill(Color.gradientPrimary)
-                                .frame(width: 80, height: 80)
-
-                            Image(systemName: "heart.fill")
-                                .font(.system(size: 35, weight: .light))
-                                .foregroundColor(.white)
-                        }
+                        ForsaLogo(size: .large, style: .iconOnly)
 
                         VStack(spacing: 8) {
                             Text("Welcome Back")

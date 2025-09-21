@@ -231,8 +231,11 @@ struct StockRowView: View {
                     Text(stock.symbol)
                         .font(.calloutMedium)
                         .foregroundColor(.textPrimary)
+                        .lineLimit(1)
 
                     HalalBadge(stock.shariaCompliance, size: .small)
+
+                    Spacer(minLength: 0)
                 }
 
                 Text(stock.name)

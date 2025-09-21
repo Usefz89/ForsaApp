@@ -121,20 +121,10 @@ struct SplashView: View {
             VStack(spacing: 20) {
                 // Forsa Logo
                 ZStack {
-                    Circle()
-                        .fill(Color.white.opacity(0.2))
-                        .frame(width: 120, height: 120)
-
-                    Circle()
-                        .fill(Color.white.opacity(0.1))
-                        .frame(width: 100, height: 100)
-
-                    Image(systemName: "heart.fill")
-                        .font(.system(size: 50, weight: .light))
-                        .foregroundColor(.white)
+                    ForsaLogo(size: .xlarge, style: .iconOnly)
+                        .scaleEffect(scale)
+                        .opacity(opacity)
                 }
-                .scaleEffect(scale)
-                .opacity(opacity)
 
                 VStack(spacing: 8) {
                     Text("Forsa")

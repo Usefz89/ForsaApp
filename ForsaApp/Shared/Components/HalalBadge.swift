@@ -17,20 +17,12 @@ struct HalalBadge: View {
     }
 
     var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: compliance.iconName)
-                .font(.system(size: size.iconSize, weight: .medium))
-                .foregroundColor(compliance.color)
-
-            Text(compliance.displayText)
-                .font(size.font)
-                .fontWeight(.medium)
-                .foregroundColor(compliance.color)
-        }
-        .padding(.horizontal, size.horizontalPadding)
-        .padding(.vertical, size.verticalPadding)
-        .background(compliance.backgroundColor)
-        .cornerRadius(size.cornerRadius)
+        Image(systemName: compliance.iconName)
+            .font(.system(size: size.iconSize, weight: .medium))
+            .foregroundColor(compliance.color)
+            .frame(width: size.badgeSize, height: size.badgeSize)
+            .background(compliance.backgroundColor)
+            .cornerRadius(size.cornerRadius)
     }
 }
 
@@ -49,9 +41,17 @@ enum BadgeSize {
 
     var iconSize: CGFloat {
         switch self {
-        case .small: return 10
-        case .medium: return 12
-        case .large: return 14
+        case .small: return 8
+        case .medium: return 10
+        case .large: return 12
+        }
+    }
+
+    var badgeSize: CGFloat {
+        switch self {
+        case .small: return 18
+        case .medium: return 22
+        case .large: return 26
         }
     }
 
@@ -73,9 +73,9 @@ enum BadgeSize {
 
     var cornerRadius: CGFloat {
         switch self {
-        case .small: return 4
-        case .medium: return 6
-        case .large: return 8
+        case .small: return 9
+        case .medium: return 11
+        case .large: return 13
         }
     }
 }

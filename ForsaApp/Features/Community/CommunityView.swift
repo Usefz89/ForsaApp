@@ -413,13 +413,14 @@ struct CommunityPortfolioCard: View {
 
                     Spacer()
 
-                    ForsaButton(
-                        "Copy Portfolio",
-                        style: .primary,
-                        size: .small
-                    ) {
-                        onCopy()
+                    NavigationLink(destination: CopyPortfolioView(portfolio: portfolio)) {
+                        ForsaButton(
+                            "Copy Portfolio",
+                            style: .primary,
+                            size: .small
+                        ) { }
                     }
+                    .buttonStyle(PlainButtonStyle())
                 }
             }
         }

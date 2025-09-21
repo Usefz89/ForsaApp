@@ -18,6 +18,7 @@ class DashboardViewModel: ObservableObject {
     @Published var recentTransactions: [Transaction] = []
     @Published var chartData: [ChartDataPoint] = []
     @Published var selectedTimeframe: TimeFrame = .oneWeek
+    @Published var investmentPies: [InvestmentPie] = []
     @Published var isLoading = false
 
     var isPortfolioPositive: Bool {
@@ -45,6 +46,7 @@ class DashboardViewModel: ObservableObject {
         loadPortfolioSummary()
         loadTopHoldings()
         loadRecentTransactions()
+        loadInvestmentPies()
         generateChartData()
     }
 
@@ -174,6 +176,11 @@ class DashboardViewModel: ObservableObject {
         }
 
         chartData = data
+    }
+
+    private func loadInvestmentPies() {
+        // Load user's investment pies from mock data
+        investmentPies = MockDataService.shared.investmentPies
     }
 }
 

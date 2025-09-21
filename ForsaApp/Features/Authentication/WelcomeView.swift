@@ -19,21 +19,12 @@ struct WelcomeView: View {
             VStack(spacing: 0) {
                 // Header
                 HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Forsa")
-                            .font(.title1)
-                            .fontWeight(.bold)
-                            .foregroundColor(.white)
-
-                        Text("Sharia-Compliant Investing")
-                            .font(.callout)
-                            .foregroundColor(.white.opacity(0.8))
-                    }
+                    ForsaLogo(size: .medium, style: .textOnly)
 
                     Spacer()
 
-                    Button("Skip") {
-                        // Handle skip action
+                    NavigationLink(destination: SignInView()) {
+                        Text("Skip")
                     }
                     .font(.callout)
                     .foregroundColor(.white.opacity(0.8))
