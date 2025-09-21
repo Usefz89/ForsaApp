@@ -129,7 +129,7 @@ class ZakatViewModel: ObservableObject {
             recipient: recipient,
             paymentMethod: paymentMethod,
             notes: notes,
-            calculationId: calculation.calculationDate.timeIntervalSince1970.hashValue
+            calculationId: UUID()
         )
 
         zakatHistory.insert(payment, at: 0)

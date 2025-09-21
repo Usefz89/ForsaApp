@@ -35,7 +35,7 @@ struct TabBarView: View {
 
             ZakatView()
                 .tabItem {
-                    Image(systemName: selectedTab == .zakat ? "mosque.fill" : "mosque")
+                    Image(systemName: selectedTab == .zakat ? "heart.fill" : "heart")
                     Text("Zakat")
                 }
                 .tag(Tab.zakat)
@@ -100,7 +100,7 @@ enum Tab: String, CaseIterable {
         case .portfolio: return "chart.pie"
         case .markets: return "chart.line.uptrend.xyaxis"
         case .community: return "person.3"
-        case .zakat: return "mosque"
+        case .zakat: return "heart"
         case .profile: return "person.crop.circle"
         }
     }
@@ -110,7 +110,7 @@ enum Tab: String, CaseIterable {
         case .portfolio: return "chart.pie.fill"
         case .markets: return "chart.line.uptrend.xyaxis"
         case .community: return "person.3.fill"
-        case .zakat: return "mosque.fill"
+        case .zakat: return "heart.fill"
         case .profile: return "person.crop.circle.fill"
         }
     }

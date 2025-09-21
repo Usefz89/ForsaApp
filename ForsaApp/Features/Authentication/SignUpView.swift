@@ -37,7 +37,7 @@ struct SignUpView: View {
                                 .fill(Color.gradientPrimary)
                                 .frame(width: 80, height: 80)
 
-                            Image(systemName: "mosque.fill")
+                            Image(systemName: "heart.fill")
                                 .font(.system(size: 35, weight: .light))
                                 .foregroundColor(.white)
                         }

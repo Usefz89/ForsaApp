@@ -151,7 +151,7 @@ struct OnboardingPage {
             description: "Discover successful portfolios from other investors. Copy strategies that work and build your investment knowledge."
         ),
         OnboardingPage(
-            iconName: "mosque.fill",
+            iconName: "heart.fill",
             title: "Integrated Zakat Calculator",
             description: "Calculate your Islamic obligations automatically. Track your assets and ensure you're fulfilling your religious duties."
         )

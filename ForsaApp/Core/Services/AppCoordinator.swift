@@ -129,7 +129,7 @@ struct SplashView: View {
                         .fill(Color.white.opacity(0.1))
                         .frame(width: 100, height: 100)
 
-                    Image(systemName: "mosque.fill")
+                    Image(systemName: "heart.fill")
                         .font(.system(size: 50, weight: .light))
                         .foregroundColor(.white)
                 }
