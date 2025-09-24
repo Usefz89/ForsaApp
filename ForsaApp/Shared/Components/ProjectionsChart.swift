@@ -20,6 +20,11 @@ struct ProjectionsChart: View {
         VStack(spacing: 0) {
             if let projection = selectedProjection {
                 chartContent(for: projection)
+                    .onAppear {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            animateChart = true
+                        }
+                    }
             } else {
                 emptyState
             }
@@ -181,7 +186,7 @@ struct ProjectionsChart: View {
 
     private func xAxisLabels(projection: InvestmentProjection, width: CGFloat, height: CGFloat) -> some View {
         let yearsToShow = min(projection.investmentDuration, 5)
-        let interval = max(1, projection.investmentDuration / (yearsToShow - 1))
+        let interval = yearsToShow > 1 ? max(1, projection.investmentDuration / (yearsToShow - 1)) : 1
 
         return HStack(alignment: .center, spacing: 0) {
             ForEach(0..<yearsToShow, id: \.self) { index in

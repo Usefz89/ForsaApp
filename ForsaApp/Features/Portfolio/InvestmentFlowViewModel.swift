@@ -230,14 +230,34 @@ class InvestmentFlowViewModel: ObservableObject {
     }
 
     func updateAllocation(_ stockId: UUID, percentage: Double) {
-        if let index = customPieAllocations.firstIndex(where: { $0.stockId == stockId }) {
-            customPieAllocations[index] = PieAllocation(
-                stockId: customPieAllocations[index].stockId,
-                symbol: customPieAllocations[index].symbol,
-                name: customPieAllocations[index].name,
-                percentage: percentage
-            )
+        guard let index = customPieAllocations.firstIndex(where: { $0.stockId == stockId }) else { return }
+
+        let oldPercentage = customPieAllocations[index].percentage
+        let difference = percentage - oldPercentage
+        let otherAllocationsCount = customPieAllocations.count - 1
+
+        if otherAllocationsCount > 0 && abs(difference) > 0.01 {
+            let adjustmentPerAllocation = -difference / Double(otherAllocationsCount)
+
+            for i in 0..<customPieAllocations.count {
+                if customPieAllocations[i].stockId != stockId {
+                    let newPercentage = max(0, min(100, customPieAllocations[i].percentage + adjustmentPerAllocation))
+                    customPieAllocations[i] = PieAllocation(
+                        stockId: customPieAllocations[i].stockId,
+                        symbol: customPieAllocations[i].symbol,
+                        name: customPieAllocations[i].name,
+                        percentage: newPercentage
+                    )
+                }
+            }
         }
+
+        customPieAllocations[index] = PieAllocation(
+            stockId: stockId,
+            symbol: customPieAllocations[index].symbol,
+            name: customPieAllocations[index].name,
+            percentage: percentage
+        )
     }
 
     func removeAllocation(_ stockId: UUID) {

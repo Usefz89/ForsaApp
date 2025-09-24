@@ -211,7 +211,7 @@ struct CurrencyInputField: View {
                 .padding(.leading, 16)
 
             TextField(placeholder, text: $text)
-                .font(.system(size: 18, weight: .semibold, design: .monospaced))
+                .font(.inputText)
                 .foregroundColor(.textPrimary)
                 .keyboardType(.decimalPad)
                 .focused($isFocused)
