@@ -521,6 +521,7 @@ struct DepositConfirmationView: View {
                     HStack {
                         Toggle("Auto invest in existing pies", isOn: $viewModel.autoInvestExistingPies)
                             .font(.callout)
+                            .foregroundColor(.textPrimary)
                     }
 
                     if viewModel.autoInvestExistingPies {

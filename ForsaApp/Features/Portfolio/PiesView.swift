@@ -125,22 +125,14 @@ struct PiesView: View {
     private var headerStatsView: some View {
         ForsaCard {
             VStack(spacing: 16) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Portfolio Overview")
-                            .font(.headline)
-                            .foregroundColor(.textPrimary)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Portfolio Overview")
+                        .font(.headline)
+                        .foregroundColor(.textPrimary)
 
-                        Text("Diversified through \(viewModel.myPies.count) investment pies")
-                            .font(.callout)
-                            .foregroundColor(.textSecondary)
-                    }
-
-                    Spacer()
-
-                    Button(action: { showingCreatePie = true }) {
-                        ForsaIconButton(icon: "plus", style: .primary, size: .medium) { }
-                    }
+                    Text("Diversified through \(viewModel.myPies.count) investment pies")
+                        .font(.callout)
+                        .foregroundColor(.textSecondary)
                 }
 
                 HStack(spacing: 20) {
