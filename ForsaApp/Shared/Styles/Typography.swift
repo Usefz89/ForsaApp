@@ -167,16 +167,118 @@ struct TextSpacing {
 
 // MARK: - Text Field Styles
 struct ForsaTextFieldStyle: TextFieldStyle {
+    let isFocused: Bool
+
+    init(isFocused: Bool = false) {
+        self.isFocused = isFocused
+    }
+
     func _body(configuration: TextField<Self._Label>) -> some View {
         configuration
             .font(.inputText)
+            .foregroundColor(.textPrimary) // Ensure text is visible
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
-            .background(Color.backgroundSecondary)
+            .background(Color.backgroundCard) // Use white background for better visibility
             .cornerRadius(8)
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color.borderPrimary, lineWidth: 1)
+                    .stroke(isFocused ? Color.primaryPurple : Color.borderPrimary, lineWidth: isFocused ? 2 : 1)
             )
+            .shadow(color: isFocused ? Color.primaryPurple.opacity(0.1) : Color.clear, radius: 4, x: 0, y: 2)
+    }
+}
+
+// Enhanced Currency Input Field
+struct CurrencyInputField: View {
+    @Binding var text: String
+    let placeholder: String
+    let currency: String
+    @FocusState private var isFocused: Bool
+
+    init(text: Binding<String>, placeholder: String, currency: String = "KWD") {
+        self._text = text
+        self.placeholder = placeholder
+        self.currency = currency
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(currency)
+                .font(.inputText)
+                .fontWeight(.medium)
+                .foregroundColor(.textSecondary)
+                .padding(.leading, 16)
+
+            TextField(placeholder, text: $text)
+                .font(.system(size: 18, weight: .semibold, design: .monospaced))
+                .foregroundColor(.textPrimary)
+                .keyboardType(.decimalPad)
+                .focused($isFocused)
+                .padding(.vertical, 12)
+                .padding(.trailing, 16)
+        }
+        .background(Color.backgroundCard)
+        .cornerRadius(12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(isFocused ? Color.primaryPurple : Color.borderPrimary, lineWidth: isFocused ? 2 : 1)
+        )
+        .shadow(color: isFocused ? Color.primaryPurple.opacity(0.15) : Color.shadowLight, radius: isFocused ? 8 : 4, x: 0, y: 2)
+        .animation(.easeInOut(duration: 0.2), value: isFocused)
+    }
+}
+
+// Quick Amount Selector
+struct QuickAmountSelector: View {
+    @Binding var selectedAmount: String
+    let amounts: [Double]
+    let currency: String
+
+    init(selectedAmount: Binding<String>, amounts: [Double] = [100, 500, 1000, 5000], currency: String = "KWD") {
+        self._selectedAmount = selectedAmount
+        self.amounts = amounts
+        self.currency = currency
+    }
+
+    var body: some View {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: 12) {
+            ForEach(amounts, id: \.self) { amount in
+                Button(action: {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        selectedAmount = String(format: "%.0f", amount)
+                    }
+                }) {
+                    HStack {
+                        Text(currency)
+                            .font(.caption1)
+                            .foregroundColor(.textSecondary)
+
+                        Text(String(format: "%.0f", amount))
+                            .font(.calloutMedium)
+                            .foregroundColor(.textPrimary)
+
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(
+                        selectedAmount == String(format: "%.0f", amount) ?
+                        Color.primaryPurple.opacity(0.1) :
+                        Color.backgroundSecondary
+                    )
+                    .cornerRadius(8)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(
+                                selectedAmount == String(format: "%.0f", amount) ?
+                                Color.primaryPurple : Color.clear,
+                                lineWidth: 2
+                            )
+                    )
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
+        }
     }
 }

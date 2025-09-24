@@ -45,26 +45,37 @@ struct ProjectionsChart: View {
 
     private func chartView(for projection: InvestmentProjection) -> some View {
         GeometryReader { geometry in
-            let chartWidth = geometry.size.width
-            let chartHeight = geometry.size.height
+            let chartWidth = geometry.size.width - 80 // Leave space for Y-axis labels
+            let chartHeight = geometry.size.height - 40 // Leave space for X-axis labels
             let maxValue = projection.projectedValue
-            let _ = projection.totalContributions
 
             ZStack {
+                // Background gradient
+                LinearGradient(
+                    colors: [
+                        Color.backgroundCard,
+                        Color.backgroundSecondary.opacity(0.3)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .cornerRadius(12)
+
                 // Grid lines (horizontal)
                 ForEach(0..<5) { index in
                     let y = chartHeight - (chartHeight * Double(index) / 4)
                     Path { path in
-                        path.move(to: CGPoint(x: 0, y: y))
-                        path.addLine(to: CGPoint(x: chartWidth, y: chartWidth))
+                        path.move(to: CGPoint(x: 60, y: y))
+                        path.addLine(to: CGPoint(x: chartWidth + 60, y: y)) // Fixed the bug - was using chartWidth as y
                     }
-                    .stroke(Color.borderPrimary, lineWidth: 0.5)
+                    .stroke(Color.borderPrimary.opacity(0.5), lineWidth: 1)
+                    .animation(.easeOut(duration: 0.8).delay(Double(index) * 0.1), value: animateChart)
                 }
 
                 // Contributions bars (grey)
                 contributionsBars(projection: projection, width: chartWidth, height: chartHeight, maxValue: maxValue)
 
-                // Projected value area (blue)
+                // Projected value area (purple gradient)
                 projectedValueArea(projection: projection, width: chartWidth, height: chartHeight, maxValue: maxValue)
 
                 // Y-axis labels
@@ -72,46 +83,76 @@ struct ProjectionsChart: View {
 
                 // X-axis labels
                 xAxisLabels(projection: projection, width: chartWidth, height: chartHeight)
+
+                // Interactive elements
+                if animateChart {
+                    interactiveLayer(projection: projection, width: chartWidth, height: chartHeight, maxValue: maxValue)
+                }
             }
+            .clipped()
         }
     }
 
     private func contributionsBars(projection: InvestmentProjection, width: CGFloat, height: CGFloat, maxValue: Double) -> some View {
         let barWidth = width / CGFloat(projection.monthlyProjections.count)
+        let barSpacing: CGFloat = 2
 
         return ForEach(Array(projection.monthlyProjections.enumerated()), id: \.offset) { index, monthlyProjection in
             let barHeight = height * (monthlyProjection.totalContributions / maxValue)
-            let xPosition = CGFloat(index) * barWidth
+            let xPosition = 60 + CGFloat(index) * barWidth
 
             Rectangle()
-                .fill(Color.borderSecondary)
-                .frame(width: max(barWidth - 2, 1), height: animateChart ? barHeight : 0)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color.borderSecondary.opacity(0.8),
+                            Color.borderSecondary.opacity(0.4)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .frame(width: max(barWidth - barSpacing, 1), height: animateChart ? barHeight : 0)
                 .position(
                     x: xPosition + barWidth / 2,
                     y: height - (animateChart ? barHeight / 2 : 0)
                 )
-                .animation(.easeOut(duration: 1.0).delay(Double(index) * 0.02), value: animateChart)
+                .cornerRadius(2)
+                .animation(.easeOut(duration: 1.2).delay(Double(index) * 0.03), value: animateChart)
         }
     }
 
     private func projectedValueArea(projection: InvestmentProjection, width: CGFloat, height: CGFloat, maxValue: Double) -> some View {
         let points = projection.monthlyProjections.enumerated().map { index, monthlyProjection in
-            let x = width * (Double(index) / Double(projection.monthlyProjections.count - 1))
+            let x = 60 + width * (Double(index) / max(Double(projection.monthlyProjections.count - 1), 1))
             let y = height - (height * (monthlyProjection.projectedValue / maxValue))
             return CGPoint(x: x, y: y)
         }
 
         return ZStack {
-            // Area fill
-            if animateChart {
+            // Area fill with enhanced gradient
+            if animateChart && !points.isEmpty {
                 Path { path in
                     guard let firstPoint = points.first else { return }
 
                     path.move(to: CGPoint(x: firstPoint.x, y: height))
                     path.addLine(to: firstPoint)
 
-                    for point in points.dropFirst() {
-                        path.addLine(to: point)
+                    // Use smooth curves instead of straight lines
+                    if points.count > 1 {
+                        for i in 1..<points.count {
+                            let currentPoint = points[i]
+                            if i == 1 {
+                                path.addLine(to: currentPoint)
+                            } else {
+                                let previousPoint = points[i-1]
+                                let controlPoint = CGPoint(
+                                    x: (previousPoint.x + currentPoint.x) / 2,
+                                    y: (previousPoint.y + currentPoint.y) / 2
+                                )
+                                path.addQuadCurve(to: currentPoint, control: controlPoint)
+                            }
+                        }
                     }
 
                     if let lastPoint = points.last {
@@ -123,35 +164,70 @@ struct ProjectionsChart: View {
                 .fill(
                     LinearGradient(
                         colors: [
-                            Color.primaryPurple.opacity(0.3),
-                            Color.primaryPurple.opacity(0.1),
-                            Color.primaryPurple.opacity(0.0)
+                            Color.primaryPurple.opacity(0.4),
+                            Color.primaryPurple.opacity(0.2),
+                            Color.primaryPurple.opacity(0.05)
                         ],
                         startPoint: .top,
                         endPoint: .bottom
                     )
                 )
-                .animation(.easeOut(duration: 1.5), value: animateChart)
+                .animation(.easeOut(duration: 1.8), value: animateChart)
             }
 
-            // Line
-            if animateChart {
+            // Enhanced line with glow effect
+            if animateChart && !points.isEmpty {
                 Path { path in
                     guard let firstPoint = points.first else { return }
                     path.move(to: firstPoint)
 
-                    for point in points.dropFirst() {
-                        path.addLine(to: point)
+                    if points.count > 1 {
+                        for i in 1..<points.count {
+                            let currentPoint = points[i]
+                            if i == 1 {
+                                path.addLine(to: currentPoint)
+                            } else {
+                                let previousPoint = points[i-1]
+                                let controlPoint = CGPoint(
+                                    x: (previousPoint.x + currentPoint.x) / 2,
+                                    y: (previousPoint.y + currentPoint.y) / 2
+                                )
+                                path.addQuadCurve(to: currentPoint, control: controlPoint)
+                            }
+                        }
                     }
                 }
-                .stroke(Color.primaryPurple, lineWidth: 3)
-                .animation(.easeOut(duration: 1.2), value: animateChart)
+                .stroke(
+                    LinearGradient(
+                        colors: [
+                            Color.primaryPurple,
+                            Color.primaryPurpleDark
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    ),
+                    style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round)
+                )
+                .shadow(color: Color.primaryPurple.opacity(0.4), radius: 8, x: 0, y: 0)
+                .animation(.easeOut(duration: 1.5), value: animateChart)
+            }
+
+            // Data points
+            if animateChart {
+                ForEach(Array(points.enumerated()), id: \.offset) { index, point in
+                    Circle()
+                        .fill(Color.primaryPurple)
+                        .frame(width: 8, height: 8)
+                        .position(point)
+                        .scaleEffect(animateChart ? 1.0 : 0.0)
+                        .animation(.easeOut(duration: 0.5).delay(1.0 + Double(index) * 0.05), value: animateChart)
+                }
             }
         }
     }
 
     private func yAxisLabels(maxValue: Double, height: CGFloat) -> some View {
-        VStack {
+        VStack(alignment: .trailing, spacing: 0) {
             ForEach(0..<5) { index in
                 let value = maxValue * Double(4 - index) / 4
                 let formattedValue = formatCurrency(value)
@@ -159,34 +235,82 @@ struct ProjectionsChart: View {
                 HStack {
                     Text(formattedValue)
                         .font(.caption2)
-                        .foregroundColor(.textTertiary)
-                        .frame(width: 60, alignment: .trailing)
+                        .fontWeight(.medium)
+                        .foregroundColor(.textSecondary)
+                        .frame(width: 50, alignment: .trailing)
 
                     Spacer()
                 }
                 .frame(height: height / 4)
             }
         }
-        .offset(x: -70)
+        .padding(.trailing, 10)
+    }
+
+    private func interactiveLayer(projection: InvestmentProjection, width: CGFloat, height: CGFloat, maxValue: Double) -> some View {
+        // Milestone markers
+        let milestones = [1, 5, 10, 15, 20, 25]
+        let duration = projection.investmentDuration
+
+        return ForEach(milestones.filter { $0 <= duration }, id: \.self) { year in
+            let xPosition = 60 + width * (Double(year * 12) / Double(projection.monthlyProjections.count))
+            let monthIndex = min(year * 12 - 1, projection.monthlyProjections.count - 1)
+            let monthlyProjection = projection.monthlyProjections[monthIndex]
+            let yPosition = height - (height * (monthlyProjection.projectedValue / maxValue))
+
+            VStack(spacing: 4) {
+                // Milestone line
+                Path { path in
+                    path.move(to: CGPoint(x: xPosition, y: 0))
+                    path.addLine(to: CGPoint(x: xPosition, y: height))
+                }
+                .stroke(Color.primaryPurple.opacity(0.3), style: StrokeStyle(lineWidth: 1, dash: [5, 5]))
+
+                // Value tooltip at the milestone
+                VStack(spacing: 2) {
+                    Text(formatCurrency(monthlyProjection.projectedValue))
+                        .font(.caption2)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.primaryPurple)
+
+                    Text("\(year)y")
+                        .font(.caption2)
+                        .foregroundColor(.textTertiary)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color.backgroundCard)
+                .cornerRadius(6)
+                .shadow(color: Color.shadowLight, radius: 4, x: 0, y: 2)
+                .position(x: xPosition, y: max(yPosition - 25, 25))
+                .scaleEffect(animateChart ? 1.0 : 0.0)
+                .animation(.easeOut(duration: 0.3).delay(2.0 + Double(year) * 0.1), value: animateChart)
+            }
+        }
     }
 
     private func xAxisLabels(projection: InvestmentProjection, width: CGFloat, height: CGFloat) -> some View {
-        let yearsToShow = min(projection.investmentDuration, 5)
-        let interval = projection.investmentDuration / yearsToShow
+        let yearsToShow = min(projection.investmentDuration, 6)
+        let actualInterval = projection.investmentDuration <= 5 ? 1 : projection.investmentDuration / 5
 
-        return HStack {
-            ForEach(0..<yearsToShow + 1, id: \.self) { index in
-                let year = index * interval
-                Text("\(year)y")
-                    .font(.caption2)
-                    .foregroundColor(.textTertiary)
+        return HStack(alignment: .center, spacing: 0) {
+            ForEach(0..<yearsToShow, id: \.self) { index in
+                let year = index * actualInterval
 
-                if index < yearsToShow {
-                    Spacer()
+                HStack {
+                    Text(year == 0 ? "Now" : "\(year)y")
+                        .font(.caption2)
+                        .fontWeight(.medium)
+                        .foregroundColor(.textSecondary)
+
+                    if index < yearsToShow - 1 {
+                        Spacer()
+                    }
                 }
             }
         }
-        .offset(y: height + 8)
+        .padding(.horizontal, 60)
+        .offset(y: height + 12)
     }
 
     private var chartLegend: some View {
@@ -220,38 +344,93 @@ struct ProjectionsChart: View {
     }
 
     private func metricsView(for projection: InvestmentProjection) -> some View {
-        HStack(spacing: 20) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Total Contributions")
-                    .font(.caption1)
-                    .foregroundColor(.textSecondary)
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 16) {
+            // Total Contributions
+            VStack(spacing: 8) {
+                VStack(spacing: 4) {
+                    HStack {
+                        Image(systemName: "arrow.down.circle.fill")
+                            .font(.caption1)
+                            .foregroundColor(.borderSecondary)
 
-                Text(projection.formattedTotalContributions)
-                    .font(.calloutMedium)
-                    .foregroundColor(.textPrimary)
+                        Text("Contributions")
+                            .font(.caption1)
+                            .foregroundColor(.textSecondary)
+
+                        Spacer()
+                    }
+
+                    HStack {
+                        Text(projection.formattedTotalContributions)
+                            .font(.calloutMedium)
+                            .foregroundColor(.textPrimary)
+
+                        Spacer()
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(Color.backgroundSecondary)
+                .cornerRadius(8)
             }
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Projected Growth")
-                    .font(.caption1)
-                    .foregroundColor(.textSecondary)
+            // Projected Growth
+            VStack(spacing: 8) {
+                VStack(spacing: 4) {
+                    HStack {
+                        Image(systemName: "chart.line.uptrend.xyaxis")
+                            .font(.caption1)
+                            .foregroundColor(.gainGreen)
 
-                Text(projection.formattedTotalGains)
-                    .font(.calloutMedium)
-                    .foregroundColor(.gainGreen)
+                        Text("Growth")
+                            .font(.caption1)
+                            .foregroundColor(.textSecondary)
+
+                        Spacer()
+                    }
+
+                    HStack {
+                        Text(projection.formattedTotalGains)
+                            .font(.calloutMedium)
+                            .foregroundColor(.gainGreen)
+
+                        Spacer()
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(Color.gainGreen.opacity(0.05))
+                .cornerRadius(8)
             }
 
-            Spacer()
+            // Final Value
+            VStack(spacing: 8) {
+                VStack(spacing: 4) {
+                    HStack {
+                        Image(systemName: "crown.fill")
+                            .font(.caption1)
+                            .foregroundColor(.primaryPurple)
 
-            VStack(alignment: .trailing, spacing: 4) {
-                Text("Final Value")
-                    .font(.caption1)
-                    .foregroundColor(.textSecondary)
+                        Text("Final Value")
+                            .font(.caption1)
+                            .foregroundColor(.textSecondary)
 
-                Text(projection.formattedProjectedValue)
-                    .font(.title3)
-                    .fontWeight(.bold)
-                    .foregroundColor(.primaryPurple)
+                        Spacer()
+                    }
+
+                    HStack {
+                        Text(projection.formattedProjectedValue)
+                            .font(.calloutMedium)
+                            .fontWeight(.bold)
+                            .foregroundColor(.primaryPurple)
+
+                        Spacer()
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(Color.primaryPurple.opacity(0.08))
+                .cornerRadius(8)
             }
         }
     }

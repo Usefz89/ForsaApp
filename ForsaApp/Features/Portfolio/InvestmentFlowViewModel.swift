@@ -229,6 +229,38 @@ class InvestmentFlowViewModel: ObservableObject {
         showingStockPicker = true
     }
 
+    func updateAllocation(_ stockId: UUID, percentage: Double) {
+        if let index = customPieAllocations.firstIndex(where: { $0.stockId == stockId }) {
+            customPieAllocations[index] = PieAllocation(
+                stockId: customPieAllocations[index].stockId,
+                symbol: customPieAllocations[index].symbol,
+                name: customPieAllocations[index].name,
+                percentage: percentage
+            )
+        }
+    }
+
+    func removeAllocation(_ stockId: UUID) {
+        customPieAllocations.removeAll { $0.stockId == stockId }
+    }
+
+    func rebalanceAllocations() {
+        guard !customPieAllocations.isEmpty else { return }
+
+        let equalPercentage = 100.0 / Double(customPieAllocations.count)
+
+        withAnimation(.easeInOut(duration: 0.5)) {
+            for i in 0..<customPieAllocations.count {
+                customPieAllocations[i] = PieAllocation(
+                    stockId: customPieAllocations[i].stockId,
+                    symbol: customPieAllocations[i].symbol,
+                    name: customPieAllocations[i].name,
+                    percentage: equalPercentage
+                )
+            }
+        }
+    }
+
     // MARK: - Step 2: Investment Method
     func selectInvestmentMethod(_ method: InvestmentMethod) {
         investmentMethod = method

@@ -173,33 +173,33 @@ struct PieSelectionStepView: View {
     }
 
     private var customPieContent: some View {
-        ForsaCard {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Build Custom Pie")
-                    .font(.headline)
-                    .foregroundColor(.textPrimary)
+        VStack(spacing: 20) {
+            ForsaCard {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Build Custom Pie")
+                        .font(.headline)
+                        .foregroundColor(.textPrimary)
 
-                Text("Create your own pie by selecting stocks and setting allocations")
-                    .font(.callout)
-                    .foregroundColor(.textSecondary)
+                    Text("Create your own pie by selecting stocks and setting allocations")
+                        .font(.callout)
+                        .foregroundColor(.textSecondary)
 
-                if viewModel.customPieAllocations.isEmpty {
-                    VStack(spacing: 12) {
-                        Image(systemName: "plus.circle")
-                            .font(.title)
-                            .foregroundColor(.textMuted)
+                    if viewModel.customPieAllocations.isEmpty {
+                        VStack(spacing: 12) {
+                            Image(systemName: "plus.circle")
+                                .font(.title)
+                                .foregroundColor(.textMuted)
 
-                        Text("No stocks selected yet")
-                            .font(.callout)
-                            .foregroundColor(.textSecondary)
+                            Text("No stocks selected yet")
+                                .font(.callout)
+                                .foregroundColor(.textSecondary)
 
-                        ForsaButton("Add Stocks", style: .outline) {
-                            viewModel.showStockPicker()
+                            ForsaButton("Add Stocks", style: .outline) {
+                                viewModel.showStockPicker()
+                            }
                         }
-                    }
-                    .padding(.vertical, 20)
-                } else {
-                    VStack(alignment: .leading, spacing: 16) {
+                        .padding(.vertical, 20)
+                    } else {
                         HStack {
                             Text("Selected Stocks (\(viewModel.customPieAllocations.count))")
                                 .font(.headline)
@@ -213,39 +213,88 @@ struct PieSelectionStepView: View {
                             .font(.callout)
                             .foregroundColor(.primaryPurple)
                         }
+                    }
+                }
+            }
 
-                        VStack(spacing: 8) {
-                            ForEach(viewModel.customPieAllocations, id: \.stockId) { allocation in
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(allocation.symbol)
-                                            .font(.calloutMedium)
-                                            .foregroundColor(.textPrimary)
+            // Interactive Pie Chart
+            if !viewModel.customPieAllocations.isEmpty {
+                ForsaCard {
+                    VStack(spacing: 20) {
+                        HStack {
+                            Text("Portfolio Allocation")
+                                .font(.headline)
+                                .foregroundColor(.textPrimary)
 
-                                        Text(allocation.name)
-                                            .font(.caption1)
-                                            .foregroundColor(.textSecondary)
-                                            .lineLimit(1)
-                                    }
+                            Spacer()
 
-                                    Spacer()
+                            if !viewModel.isValidAllocation {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .font(.caption1)
+                                        .foregroundColor(.warningYellow)
 
-                                    Text("\(String(format: "%.1f", allocation.percentage))%")
-                                        .font(.calloutMedium)
-                                        .foregroundColor(.primaryPurple)
+                                    Text("Total must equal 100%")
+                                        .font(.caption1)
+                                        .foregroundColor(.warningYellow)
                                 }
-                                .padding(.vertical, 4)
+                            } else {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .font(.caption1)
+                                        .foregroundColor(.halalGreen)
 
-                                if allocation.stockId != viewModel.customPieAllocations.last?.stockId {
-                                    Divider()
+                                    Text("Balanced")
+                                        .font(.caption1)
+                                        .foregroundColor(.halalGreen)
                                 }
                             }
                         }
 
-                        if !viewModel.isValidAllocation {
-                            Text("Total allocation must equal 100%")
-                                .font(.caption1)
-                                .foregroundColor(.errorRed)
+                        PieChartView(
+                            allocations: viewModel.customPieAllocations,
+                            isInteractive: true
+                        ) { allocation in
+                            // Handle allocation tap - could show detailed view or edit allocation
+                            print("Tapped allocation: \(allocation.symbol)")
+                        }
+                    }
+                }
+
+                // Allocation Adjustment Cards
+                ForsaCard {
+                    VStack(alignment: .leading, spacing: 16) {
+                        HStack {
+                            Text("Adjust Allocations")
+                                .font(.headline)
+                                .foregroundColor(.textPrimary)
+
+                            Spacer()
+
+                            Button("Auto Balance") {
+                                viewModel.rebalanceAllocations()
+                            }
+                            .font(.caption1)
+                            .fontWeight(.medium)
+                            .foregroundColor(.primaryPurple)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Color.primaryPurple.opacity(0.1))
+                            .cornerRadius(6)
+                        }
+
+                        VStack(spacing: 12) {
+                            ForEach(viewModel.customPieAllocations, id: \.stockId) { allocation in
+                                AllocationAdjustmentRow(
+                                    allocation: allocation,
+                                    onPercentageChange: { newPercentage in
+                                        viewModel.updateAllocation(allocation.stockId, percentage: newPercentage)
+                                    },
+                                    onRemove: {
+                                        viewModel.removeAllocation(allocation.stockId)
+                                    }
+                                )
+                            }
                         }
                     }
                 }
@@ -460,30 +509,41 @@ struct ConfigureInvestmentStepView: View {
     }
 
     private var manualInvestmentConfig: some View {
-        ForsaCard {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Investment Amount")
-                    .font(.headline)
-                    .foregroundColor(.textPrimary)
+        VStack(spacing: 16) {
+            ForsaCard {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Investment Amount")
+                        .font(.headline)
+                        .foregroundColor(.textPrimary)
 
-                VStack(alignment: .leading, spacing: 8) {
-                    TextField("Enter amount", text: $viewModel.manualAmountText)
-                        .font(.title2)
-                        .fontWeight(.semibold)
-                        .textFieldStyle(ForsaTextFieldStyle())
-                        .keyboardType(.decimalPad)
+                    VStack(alignment: .leading, spacing: 12) {
+                        CurrencyInputField(
+                            text: $viewModel.manualAmountText,
+                            placeholder: "Enter amount"
+                        )
 
-                    HStack {
-                        Text("Available: KWD \(String(format: "%.0f", viewModel.cashAccount.balance))")
-                            .font(.caption1)
-                            .foregroundColor(.textSecondary)
+                        HStack {
+                            Text("Available: KWD \(String(format: "%.0f", viewModel.cashAccount.balance))")
+                                .font(.caption1)
+                                .foregroundColor(.textSecondary)
 
-                        Spacer()
+                            Spacer()
 
-                        Text("Minimum: KWD 5")
-                            .font(.caption1)
-                            .foregroundColor(.textSecondary)
+                            Text("Minimum: KWD 5")
+                                .font(.caption1)
+                                .foregroundColor(.textSecondary)
+                        }
                     }
+                }
+            }
+
+            ForsaCard {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Quick Amounts")
+                        .font(.headline)
+                        .foregroundColor(.textPrimary)
+
+                    QuickAmountSelector(selectedAmount: $viewModel.manualAmountText)
                 }
             }
         }
@@ -498,13 +558,16 @@ struct ConfigureInvestmentStepView: View {
                         .font(.headline)
                         .foregroundColor(.textPrimary)
 
-                    TextField("Enter initial amount", text: $viewModel.initialDepositText)
-                        .textFieldStyle(ForsaTextFieldStyle())
-                        .keyboardType(.decimalPad)
+                    VStack(alignment: .leading, spacing: 12) {
+                        CurrencyInputField(
+                            text: $viewModel.initialDepositText,
+                            placeholder: "Enter initial amount"
+                        )
 
-                    Text("KWD 5 - KWD 50,000")
-                        .font(.caption1)
-                        .foregroundColor(.textSecondary)
+                        Text("KWD 5 - KWD 50,000")
+                            .font(.caption1)
+                            .foregroundColor(.textSecondary)
+                    }
                 }
             }
 
@@ -515,13 +578,16 @@ struct ConfigureInvestmentStepView: View {
                         .font(.headline)
                         .foregroundColor(.textPrimary)
 
-                    TextField("Enter monthly amount", text: $viewModel.monthlyContributionText)
-                        .textFieldStyle(ForsaTextFieldStyle())
-                        .keyboardType(.decimalPad)
+                    VStack(alignment: .leading, spacing: 12) {
+                        CurrencyInputField(
+                            text: $viewModel.monthlyContributionText,
+                            placeholder: "Enter monthly amount"
+                        )
 
-                    Text("KWD 0 - KWD 2,000")
-                        .font(.caption1)
-                        .foregroundColor(.textSecondary)
+                        Text("KWD 0 - KWD 2,000")
+                            .font(.caption1)
+                            .foregroundColor(.textSecondary)
+                    }
                 }
             }
 
@@ -880,6 +946,110 @@ struct FinalizeInvestmentStepView: View {
                     .foregroundColor(.textSecondary)
                 }
             }
+        }
+    }
+}
+
+// MARK: - Allocation Adjustment Row
+struct AllocationAdjustmentRow: View {
+    let allocation: PieAllocation
+    let onPercentageChange: (Double) -> Void
+    let onRemove: () -> Void
+
+    @State private var percentageText: String
+
+    init(allocation: PieAllocation, onPercentageChange: @escaping (Double) -> Void, onRemove: @escaping () -> Void) {
+        self.allocation = allocation
+        self.onPercentageChange = onPercentageChange
+        self.onRemove = onRemove
+        self._percentageText = State(initialValue: String(format: "%.1f", allocation.percentage))
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Stock info
+            VStack(alignment: .leading, spacing: 2) {
+                Text(allocation.symbol)
+                    .font(.calloutMedium)
+                    .foregroundColor(.textPrimary)
+
+                Text(allocation.name)
+                    .font(.caption1)
+                    .foregroundColor(.textSecondary)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            // Percentage adjustment
+            HStack(spacing: 8) {
+                Button(action: {
+                    adjustPercentage(-1)
+                }) {
+                    Image(systemName: "minus.circle.fill")
+                        .font(.title3)
+                        .foregroundColor(.textSecondary)
+                }
+                .buttonStyle(PlainButtonStyle())
+
+                TextField("", text: $percentageText)
+                    .font(.calloutMedium)
+                    .foregroundColor(.primaryPurple)
+                    .keyboardType(.decimalPad)
+                    .textFieldStyle(PlainTextFieldStyle())
+                    .frame(width: 40)
+                    .multilineTextAlignment(.center)
+                    .onSubmit {
+                        updatePercentage()
+                    }
+                    .onChange(of: percentageText) { _, newValue in
+                        if let percentage = Double(newValue), percentage >= 0, percentage <= 100 {
+                            onPercentageChange(percentage)
+                        }
+                    }
+
+                Text("%")
+                    .font(.callout)
+                    .foregroundColor(.textSecondary)
+
+                Button(action: {
+                    adjustPercentage(1)
+                }) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.title3)
+                        .foregroundColor(.primaryPurple)
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
+
+            // Remove button
+            Button(action: onRemove) {
+                Image(systemName: "trash.circle.fill")
+                    .font(.title3)
+                    .foregroundColor(.errorRed.opacity(0.7))
+            }
+            .buttonStyle(PlainButtonStyle())
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .background(Color.backgroundSecondary.opacity(0.5))
+        .cornerRadius(8)
+    }
+
+    private func adjustPercentage(_ delta: Double) {
+        let currentPercentage = Double(percentageText) ?? allocation.percentage
+        let newPercentage = max(0, min(100, currentPercentage + delta))
+        percentageText = String(format: "%.1f", newPercentage)
+        onPercentageChange(newPercentage)
+    }
+
+    private func updatePercentage() {
+        if let percentage = Double(percentageText) {
+            let clampedPercentage = max(0, min(100, percentage))
+            percentageText = String(format: "%.1f", clampedPercentage)
+            onPercentageChange(clampedPercentage)
+        } else {
+            percentageText = String(format: "%.1f", allocation.percentage)
         }
     }
 }
