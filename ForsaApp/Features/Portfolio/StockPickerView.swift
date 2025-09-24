@@ -149,6 +149,13 @@ struct StockPickerView: View {
 
     private func addSelectedStocks() {
         let selectedStockData = sampleStocks.filter { selectedStocks.contains($0.id) }
+
+        // Prevent division by zero crash
+        guard !selectedStockData.isEmpty else {
+            dismiss()
+            return
+        }
+
         let allocations = selectedStockData.enumerated().map { index, stock in
             let basePercentage = 100.0 / Double(selectedStockData.count)
             let adjustedPercentage = index == 0 ? 100.0 - basePercentage * Double(selectedStockData.count - 1) : basePercentage

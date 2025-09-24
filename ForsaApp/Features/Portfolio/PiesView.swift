@@ -37,7 +37,10 @@ struct PiesView: View {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: { showingCreatePie = true }) {
                         Image(systemName: "plus")
-                            .foregroundColor(.primaryPurple)
+                            .foregroundColor(.white)
+                            .padding(8)
+                            .background(Color.primaryPurple)
+                            .clipShape(Circle())
                     }
                 }
             }
