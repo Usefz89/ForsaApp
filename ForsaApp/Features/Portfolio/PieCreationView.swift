@@ -47,12 +47,15 @@ struct PieCreationView: View {
                 }
             }
         }
-        .onChange(of: viewModel.investmentCompleted) { completed in
+        .onChange(of: viewModel.investmentCompleted) { _, completed in
             if completed {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                     dismiss()
                 }
             }
+        }
+        .sheet(isPresented: $viewModel.showingStockPicker) {
+            StockPickerView(viewModel: viewModel)
         }
     }
 
@@ -190,13 +193,61 @@ struct PieSelectionStepView: View {
                             .font(.callout)
                             .foregroundColor(.textSecondary)
 
-                        ForsaButton("Add Stocks", style: .outline, action: {})
+                        ForsaButton("Add Stocks", style: .outline) {
+                            viewModel.showStockPicker()
+                        }
                     }
                     .padding(.vertical, 20)
                 } else {
-                    Text("Selected Stocks: \(viewModel.customPieAllocations.count)")
-                        .font(.callout)
-                        .foregroundColor(.textPrimary)
+                    VStack(alignment: .leading, spacing: 16) {
+                        HStack {
+                            Text("Selected Stocks (\(viewModel.customPieAllocations.count))")
+                                .font(.headline)
+                                .foregroundColor(.textPrimary)
+
+                            Spacer()
+
+                            Button("Edit") {
+                                viewModel.showStockPicker()
+                            }
+                            .font(.callout)
+                            .foregroundColor(.primaryPurple)
+                        }
+
+                        VStack(spacing: 8) {
+                            ForEach(viewModel.customPieAllocations, id: \.stockId) { allocation in
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(allocation.symbol)
+                                            .font(.calloutMedium)
+                                            .foregroundColor(.textPrimary)
+
+                                        Text(allocation.name)
+                                            .font(.caption1)
+                                            .foregroundColor(.textSecondary)
+                                            .lineLimit(1)
+                                    }
+
+                                    Spacer()
+
+                                    Text("\(String(format: "%.1f", allocation.percentage))%")
+                                        .font(.calloutMedium)
+                                        .foregroundColor(.primaryPurple)
+                                }
+                                .padding(.vertical, 4)
+
+                                if allocation.stockId != viewModel.customPieAllocations.last?.stockId {
+                                    Divider()
+                                }
+                            }
+                        }
+
+                        if !viewModel.isValidAllocation {
+                            Text("Total allocation must equal 100%")
+                                .font(.caption1)
+                                .foregroundColor(.errorRed)
+                        }
+                    }
                 }
             }
         }

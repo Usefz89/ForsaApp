@@ -11,6 +11,7 @@ import Charts
 struct DashboardView: View {
     @EnvironmentObject var coordinator: AppCoordinator
     @StateObject private var viewModel = DashboardViewModel()
+    @State private var showingCashReserve = false
 
     var body: some View {
         NavigationView {
@@ -24,6 +25,9 @@ struct DashboardView: View {
 
                     // Performance Chart
                     performanceChartView
+
+                    // Cash Reserve Section
+                    cashReserveSection
 
                     // Quick Actions
                     quickActionsView
@@ -45,6 +49,9 @@ struct DashboardView: View {
             .refreshable {
                 await viewModel.refreshData()
             }
+        }
+        .sheet(isPresented: $showingCashReserve) {
+            CashReserveView()
         }
         .onAppear {
             viewModel.loadData()
@@ -162,6 +169,7 @@ struct DashboardView: View {
                 }
             }
         }
+        .buttonStyle(PlainButtonStyle())
     }
 
     private var performanceChartView: some View {
@@ -231,6 +239,71 @@ struct DashboardView: View {
         }
     }
 
+    private var cashReserveSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Cash Reserve")
+                .font(.headline)
+                .foregroundColor(.textPrimary)
+
+            Button(action: {
+                showingCashReserve = true
+            }) {
+                ForsaCard {
+                    HStack(spacing: 16) {
+                        // Cash icon
+                        Image(systemName: "dollarsign.circle.fill")
+                            .font(.title2)
+                            .foregroundColor(.primaryPurple)
+                            .frame(width: 40)
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Available Cash")
+                                .font(.callout)
+                                .foregroundColor(.textSecondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                            Text("KWD 5,250.00")
+                                .font(.title3)
+                                .fontWeight(.bold)
+                                .foregroundColor(.textPrimary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                            HStack(spacing: 4) {
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.caption2)
+                                    .foregroundColor(.halalGreen)
+
+                                Text("Last deposit: KWD 1,000")
+                                    .font(.caption1)
+                                    .foregroundColor(.textSecondary)
+                            }
+                        }
+
+                        Spacer()
+
+                        // Action buttons
+                        VStack(spacing: 8) {
+                            Image(systemName: "chevron.right")
+                                .font(.caption1)
+                                .foregroundColor(.primaryPurple)
+
+                            VStack(spacing: 4) {
+                                Text("View")
+                                    .font(.caption2)
+                                    .foregroundColor(.primaryPurple)
+                                Text("Details")
+                                    .font(.caption2)
+                                    .foregroundColor(.primaryPurple)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+            .buttonStyle(PlainButtonStyle())
+        }
+    }
+
     private var quickActionsView: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Quick Actions")
@@ -279,7 +352,7 @@ struct DashboardView: View {
                     icon: "arrow.down.circle.fill",
                     color: .primaryBlue
                 ) {
-                    // Navigate to deposit
+                    showingCashReserve = true
                 }
 
                 QuickActionCard(

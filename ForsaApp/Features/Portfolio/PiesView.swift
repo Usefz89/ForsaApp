@@ -10,15 +10,11 @@ import SwiftUI
 struct PiesView: View {
     @StateObject private var viewModel = PiesViewModel()
     @State private var showingCreatePie = false
-    @State private var showingDepositFlow = false
 
     var body: some View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 24) {
-                    // Cash Reserve section
-                    cashReserveSection
-
                     // Header with stats
                     headerStatsView
 
@@ -48,9 +44,6 @@ struct PiesView: View {
             .sheet(isPresented: $showingCreatePie) {
                 PieCreationView()
             }
-            .sheet(isPresented: $showingDepositFlow) {
-                DepositFlowView()
-            }
         }
         .onAppear {
             viewModel.loadData()
@@ -79,11 +72,11 @@ struct PiesView: View {
                     Spacer()
 
                     VStack(spacing: 8) {
-                        ForsaButton("Add Money", style: .primary, size: .medium) {
-                            showingDepositFlow = true
+                        ForsaButton("Create Pie", style: .primary, size: .medium) {
+                            showingCreatePie = true
                         }
 
-                        Text("Instant funding")
+                        Text("Start investing")
                             .font(.caption2)
                             .foregroundColor(.textTertiary)
                     }

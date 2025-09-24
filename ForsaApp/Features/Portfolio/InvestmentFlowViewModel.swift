@@ -22,6 +22,7 @@ class InvestmentFlowViewModel: ObservableObject {
     @Published var selectedModelPie: Portfolio?
     @Published var selectedCommunityPie: Portfolio?
     @Published var customPieAllocations: [PieAllocation] = []
+    @Published var showingStockPicker: Bool = false
 
     // MARK: - Step 2: Investment Method
     @Published var investmentMethod: InvestmentMethod = .manual
@@ -218,6 +219,14 @@ class InvestmentFlowViewModel: ObservableObject {
         if customPieAllocations.indices.contains(index) {
             customPieAllocations.remove(at: index)
         }
+    }
+
+    func setCustomPieAllocations(_ allocations: [PieAllocation]) {
+        customPieAllocations = allocations
+    }
+
+    func showStockPicker() {
+        showingStockPicker = true
     }
 
     // MARK: - Step 2: Investment Method
