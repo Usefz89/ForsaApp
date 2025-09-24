@@ -14,8 +14,24 @@ class PiesViewModel: ObservableObject {
     @Published var piePerformances: [UUID: PiePerformance] = [:]
     @Published var isLoading = false
     @Published var showingCopySuccess = false
+    @Published var cashAccount: CashAccount
+    @Published var recentCashTransactions: [DepositTransaction] = []
 
     private let mockDataService = MockDataService.shared
+
+    init() {
+        // Initialize with mock cash account
+        self.cashAccount = CashAccount(
+            userId: UUID(),
+            balance: 5250.0,
+            totalDeposited: 12500.0,
+            kycStatus: .verified,
+            verificationLevel: .full
+        )
+
+        // Generate mock recent transactions
+        self.recentCashTransactions = generateMockCashTransactions()
+    }
 
     var totalPieValue: Double {
         myPies.reduce(0) { $0 + $1.totalInvested }
@@ -51,6 +67,9 @@ class PiesViewModel: ObservableObject {
 
         // Generate mock performance data
         generatePerformanceData()
+
+        // Refresh cash account data (in real app, would fetch from API)
+        refreshCashAccount()
     }
 
     func getCreator(for pie: Portfolio) -> User? {
@@ -150,6 +169,40 @@ class PiesViewModel: ObservableObject {
             percentage: percentage,
             isPositive: percentage >= 0
         )
+    }
+
+    private func refreshCashAccount() {
+        // In a real app, this would fetch updated cash account data from API
+        // For now, just simulate some changes
+    }
+
+    private func generateMockCashTransactions() -> [DepositTransaction] {
+        let transactions: [DepositTransaction] = [
+            DepositTransaction(
+                accountId: UUID(),
+                amount: 1000,
+                paymentMethod: .knet,
+                estimatedSettlementTime: "Instant",
+                createdAt: Calendar.current.date(byAdding: .day, value: -2, to: Date()) ?? Date()
+            ),
+            DepositTransaction(
+                accountId: UUID(),
+                amount: 500,
+                paymentMethod: .applePay,
+                estimatedSettlementTime: "Instant",
+                createdAt: Calendar.current.date(byAdding: .day, value: -5, to: Date()) ?? Date()
+            ),
+            DepositTransaction(
+                accountId: UUID(),
+                amount: 250,
+                paymentMethod: .creditCard,
+                processingFee: 7.25,
+                estimatedSettlementTime: "Instant",
+                createdAt: Calendar.current.date(byAdding: .weekOfYear, value: -1, to: Date()) ?? Date()
+            )
+        ]
+
+        return transactions
     }
 }
 

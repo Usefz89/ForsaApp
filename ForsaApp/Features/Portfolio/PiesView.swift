@@ -10,11 +10,15 @@ import SwiftUI
 struct PiesView: View {
     @StateObject private var viewModel = PiesViewModel()
     @State private var showingCreatePie = false
+    @State private var showingDepositFlow = false
 
     var body: some View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 24) {
+                    // Cash Reserve section
+                    cashReserveSection
+
                     // Header with stats
                     headerStatsView
 
@@ -44,9 +48,84 @@ struct PiesView: View {
             .sheet(isPresented: $showingCreatePie) {
                 PieCreationView()
             }
+            .sheet(isPresented: $showingDepositFlow) {
+                DepositFlowView()
+            }
         }
         .onAppear {
             viewModel.loadData()
+        }
+    }
+
+    private var cashReserveSection: some View {
+        ForsaCard {
+            VStack(spacing: 16) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Cash Reserve")
+                            .font(.headline)
+                            .foregroundColor(.textPrimary)
+
+                        Text(viewModel.cashAccount.formattedBalance)
+                            .font(.title2)
+                            .fontWeight(.bold)
+                            .foregroundColor(.primaryPurple)
+
+                        Text("Available for investment")
+                            .font(.caption1)
+                            .foregroundColor(.textSecondary)
+                    }
+
+                    Spacer()
+
+                    VStack(spacing: 8) {
+                        ForsaButton("Add Money", style: .primary, size: .medium) {
+                            showingDepositFlow = true
+                        }
+
+                        Text("Instant funding")
+                            .font(.caption2)
+                            .foregroundColor(.textTertiary)
+                    }
+                }
+
+                // Recent transactions or quick actions
+                if !viewModel.recentCashTransactions.isEmpty {
+                    Divider()
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Recent Activity")
+                            .font(.callout)
+                            .fontWeight(.medium)
+                            .foregroundColor(.textPrimary)
+
+                        ForEach(viewModel.recentCashTransactions.prefix(2)) { transaction in
+                            HStack {
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.caption1)
+                                    .foregroundColor(.halalGreen)
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(transaction.paymentMethod.displayName)
+                                        .font(.caption1)
+                                        .foregroundColor(.textPrimary)
+
+                                    Text(transaction.createdAt, style: .date)
+                                        .font(.caption2)
+                                        .foregroundColor(.textTertiary)
+                                }
+
+                                Spacer()
+
+                                Text(transaction.formattedAmount)
+                                    .font(.caption1)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(.halalGreen)
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -74,14 +153,14 @@ struct PiesView: View {
                 HStack(spacing: 20) {
                     StatView(
                         title: "Total Value",
-                        value: "$\(String(format: "%.0f", viewModel.totalPieValue))",
+                        value: "KWD \(String(format: "%.0f", viewModel.totalPieValue))",
                         icon: "chart.pie.fill",
                         color: .primaryPurple
                     )
 
                     StatView(
                         title: "Monthly Auto-Invest",
-                        value: "$\(String(format: "%.0f", viewModel.totalAutoInvest))",
+                        value: "KWD \(String(format: "%.0f", viewModel.totalAutoInvest))",
                         icon: "arrow.clockwise.circle.fill",
                         color: .primaryGreen
                     )
@@ -242,7 +321,7 @@ struct MyPieCard: View {
                     Spacer()
 
                     VStack(alignment: .trailing, spacing: 4) {
-                        Text("$\(String(format: "%.0f", pie.totalInvested))")
+                        Text("KWD \(String(format: "%.0f", pie.totalInvested))")
                             .font(.headline)
                             .foregroundColor(.textPrimary)
 
@@ -285,7 +364,7 @@ struct MyPieCard: View {
                             .font(.caption1)
                             .foregroundColor(.primaryGreen)
 
-                        Text("Auto-investing $\(String(format: "%.0f", pie.autoInvestAmount ?? 0))/month")
+                        Text("Auto-investing KWD \(String(format: "%.0f", pie.autoInvestAmount ?? 0))/month")
                             .font(.caption1)
                             .foregroundColor(.primaryGreen)
 
@@ -340,7 +419,7 @@ struct CommunityPieCard: View {
                         .foregroundColor(.textPrimary)
                         .lineLimit(2)
 
-                    Text("$\(String(format: "%.0f", pie.totalValue))")
+                    Text("KWD \(String(format: "%.0f", pie.totalValue))")
                         .font(.caption1)
                         .foregroundColor(.textSecondary)
 
@@ -433,7 +512,7 @@ struct FeaturedPieCard: View {
                             .font(.caption1)
                             .foregroundColor(.textTertiary)
 
-                        Text("$\(String(format: "%.0f", pie.totalValue))")
+                        Text("KWD \(String(format: "%.0f", pie.totalValue))")
                             .font(.calloutMedium)
                             .foregroundColor(.textPrimary)
                     }
@@ -525,6 +604,8 @@ struct PieDetailView: View {
             .navigationTitle(pie.name)
     }
 }
+
+// StatView is already defined in DashboardView.swift
 
 // MARK: - Preview
 #Preview {

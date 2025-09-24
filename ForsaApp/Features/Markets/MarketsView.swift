@@ -65,7 +65,7 @@ struct MarketsView: View {
                     .font(.body)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
-                    .onChange(of: searchText) { newValue in
+                    .onChange(of: searchText) { _, newValue in
                         viewModel.searchStocks(newValue)
                     }
 
@@ -269,7 +269,7 @@ struct StockRowView: View {
                         .foregroundColor(stock.isPositive ? .gainGreen : .lossRed)
                 }
 
-                if let marketCap = stock.marketCap {
+                if stock.marketCap != nil {
                     Text("MC: \(stock.formattedMarketCap)")
                         .font(.caption2)
                         .foregroundColor(.textTertiary)
@@ -415,7 +415,7 @@ struct StockDetailView: View {
                     .foregroundColor(.textPrimary)
 
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: 16) {
-                    if let marketCap = stock.marketCap {
+                    if stock.marketCap != nil {
                         StatRowView(title: "Market Cap", value: stock.formattedMarketCap)
                     }
 
