@@ -656,11 +656,12 @@ struct ValueProjectionsStepView: View {
             ProjectionScenarioToggle(selectedScenario: $viewModel.selectedScenario)
 
             // Projections chart
-            ForsaCard(padding: EdgeInsets(top: 24, leading: 16, bottom: 24, trailing: 16)) {
+            ForsaCard {
                 ProjectionsChart(
                     projections: viewModel.projections,
                     selectedScenario: viewModel.selectedScenario
                 )
+                .padding(.vertical, 24)
             }
         }
         .onAppear {
@@ -909,6 +910,19 @@ struct FinalizeInvestmentStepView: View {
                             .foregroundColor(.errorRed)
                     }
                 }
+            }
+
+            // Create Investment Button
+            if viewModel.acceptTerms {
+                ForsaButton(
+                    "Create Investment Pie",
+                    style: .primary,
+                    size: .large,
+                    isLoading: viewModel.isProcessing
+                ) {
+                    viewModel.confirmInvestment()
+                }
+                .padding(.top, 16)
             }
         }
     }

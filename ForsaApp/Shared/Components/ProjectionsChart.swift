@@ -35,8 +35,7 @@ struct ProjectionsChart: View {
         VStack(spacing: 16) {
             // Chart area
             chartView(for: projection)
-                .frame(height: 200)
-                .padding(.horizontal, 20)
+                .frame(height: 250)
 
             // Legend
             chartLegend
@@ -71,11 +70,11 @@ struct ProjectionsChart: View {
                     .animation(.easeOut(duration: 0.6).delay(0.2), value: animateChart)
                 }
 
-                // Contributions bars (simplified)
-                contributionsBars(projection: projection, width: chartWidth, height: chartHeight, maxValue: maxValue)
+                // Contributions area (bottom layer)
+                contributionsArea(projection: projection, width: chartWidth, height: chartHeight, maxValue: maxValue)
 
-                // Projected value area (clean design matching reference)
-                projectedValueArea(projection: projection, width: chartWidth, height: chartHeight, maxValue: maxValue)
+                // Growth area (top layer - from contributions to projected value)
+                growthArea(projection: projection, width: chartWidth, height: chartHeight, maxValue: maxValue)
 
                 // Y-axis labels (cleaner positioning)
                 yAxisLabels(maxValue: maxValue, height: chartHeight)
@@ -87,47 +86,28 @@ struct ProjectionsChart: View {
         }
     }
 
-    private func contributionsBars(projection: InvestmentProjection, width: CGFloat, height: CGFloat, maxValue: Double) -> some View {
-        let barWidth = width / CGFloat(projection.monthlyProjections.count)
-        let barSpacing: CGFloat = 1
-
-        return ForEach(Array(projection.monthlyProjections.enumerated()), id: \.offset) { index, monthlyProjection in
-            let barHeight = height * (monthlyProjection.totalContributions / maxValue)
-            let xPosition = 50 + CGFloat(index) * barWidth
-
-            Rectangle()
-                .fill(Color.borderSecondary.opacity(0.6))
-                .frame(width: max(barWidth - barSpacing, 1), height: animateChart ? barHeight : 0)
-                .position(
-                    x: xPosition + barWidth / 2,
-                    y: height - (animateChart ? barHeight / 2 : 0)
-                )
-                .cornerRadius(1)
-                .animation(.easeOut(duration: 0.8).delay(Double(index) * 0.02), value: animateChart)
-        }
-    }
-
-    private func projectedValueArea(projection: InvestmentProjection, width: CGFloat, height: CGFloat, maxValue: Double) -> some View {
+    private func contributionsArea(projection: InvestmentProjection, width: CGFloat, height: CGFloat, maxValue: Double) -> some View {
         let points = projection.monthlyProjections.enumerated().map { index, monthlyProjection in
             let x = 50 + width * (Double(index) / max(Double(projection.monthlyProjections.count - 1), 1))
-            let y = height - (height * (monthlyProjection.projectedValue / maxValue))
+            let y = height - (height * (monthlyProjection.totalContributions / maxValue))
             return CGPoint(x: x, y: y)
         }
 
-        return ZStack {
-            // Clean area fill matching reference image
+        return Group {
             if animateChart && !points.isEmpty {
                 Path { path in
                     guard let firstPoint = points.first else { return }
 
+                    // Start from bottom left
                     path.move(to: CGPoint(x: firstPoint.x, y: height))
                     path.addLine(to: firstPoint)
 
-                    // Simple linear connections for clarity
+                    // Draw line through all contribution points
                     for point in points.dropFirst() {
                         path.addLine(to: point)
                     }
 
+                    // Close area back to bottom
                     if let lastPoint = points.last {
                         path.addLine(to: CGPoint(x: lastPoint.x, y: height))
                     }
@@ -137,8 +117,63 @@ struct ProjectionsChart: View {
                 .fill(
                     LinearGradient(
                         colors: [
-                            Color.primaryPurple.opacity(0.3),
-                            Color.primaryPurple.opacity(0.1)
+                            Color.blue.opacity(0.4),
+                            Color.blue.opacity(0.2)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .animation(.easeOut(duration: 1.0), value: animateChart)
+            }
+        }
+    }
+
+    private func growthArea(projection: InvestmentProjection, width: CGFloat, height: CGFloat, maxValue: Double) -> some View {
+        let contributionPoints = projection.monthlyProjections.enumerated().map { index, monthlyProjection in
+            let x = 50 + width * (Double(index) / max(Double(projection.monthlyProjections.count - 1), 1))
+            let y = height - (height * (monthlyProjection.totalContributions / maxValue))
+            return CGPoint(x: x, y: y)
+        }
+
+        let projectedPoints = projection.monthlyProjections.enumerated().map { index, monthlyProjection in
+            let x = 50 + width * (Double(index) / max(Double(projection.monthlyProjections.count - 1), 1))
+            let y = height - (height * (monthlyProjection.projectedValue / maxValue))
+            return CGPoint(x: x, y: y)
+        }
+
+        return ZStack {
+            // Growth area fill (between contributions and projected value)
+            if animateChart && !contributionPoints.isEmpty && !projectedPoints.isEmpty {
+                Path { path in
+                    guard let firstContribution = contributionPoints.first,
+                          let firstProjected = projectedPoints.first else { return }
+
+                    // Start from first contribution point
+                    path.move(to: firstContribution)
+
+                    // Draw along contribution line
+                    for point in contributionPoints.dropFirst() {
+                        path.addLine(to: point)
+                    }
+
+                    // Draw up to projected value at the end
+                    if let lastProjected = projectedPoints.last {
+                        path.addLine(to: lastProjected)
+                    }
+
+                    // Draw back along projected value line
+                    for point in projectedPoints.reversed().dropFirst() {
+                        path.addLine(to: point)
+                    }
+
+                    path.closeSubpath()
+                }
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color.primaryPurple.opacity(0.4),
+                            Color.primaryPurple.opacity(0.2)
                         ],
                         startPoint: .top,
                         endPoint: .bottom
@@ -147,13 +182,13 @@ struct ProjectionsChart: View {
                 .animation(.easeOut(duration: 1.0), value: animateChart)
             }
 
-            // Clean line matching reference
-            if animateChart && !points.isEmpty {
+            // Projected value line
+            if animateChart && !projectedPoints.isEmpty {
                 Path { path in
-                    guard let firstPoint = points.first else { return }
+                    guard let firstPoint = projectedPoints.first else { return }
                     path.move(to: firstPoint)
 
-                    for point in points.dropFirst() {
+                    for point in projectedPoints.dropFirst() {
                         path.addLine(to: point)
                     }
                 }
@@ -185,24 +220,38 @@ struct ProjectionsChart: View {
 
 
     private func xAxisLabels(projection: InvestmentProjection, width: CGFloat, height: CGFloat) -> some View {
-        let yearsToShow = min(projection.investmentDuration, 5)
-        let interval = yearsToShow > 1 ? max(1, projection.investmentDuration / (yearsToShow - 1)) : 1
+        let duration = projection.investmentDuration
+        let yearsToShow: Int
+        let interval: Int
+
+        // Better year distribution based on duration
+        if duration <= 1 {
+            yearsToShow = 2
+            interval = 1
+        } else if duration <= 3 {
+            yearsToShow = duration + 1
+            interval = 1
+        } else if duration <= 10 {
+            yearsToShow = 6
+            interval = max(1, duration / 5)
+        } else {
+            yearsToShow = 6
+            interval = max(2, duration / 5)
+        }
 
         return HStack(alignment: .center, spacing: 0) {
             ForEach(0..<yearsToShow, id: \.self) { index in
                 let year = index * interval
 
                 Text(year == 0 ? "Now" : "\(year)y")
-                    .font(.caption2)
+                    .font(.caption1)
+                    .fontWeight(.medium)
                     .foregroundColor(.textSecondary)
-
-                if index < yearsToShow - 1 {
-                    Spacer()
-                }
+                    .frame(maxWidth: .infinity)
             }
         }
         .padding(.horizontal, 50)
-        .offset(y: height + 8)
+        .offset(y: height + 12)
     }
 
     private var chartLegend: some View {
@@ -210,7 +259,13 @@ struct ProjectionsChart: View {
             // Contributions legend
             HStack(spacing: 8) {
                 Rectangle()
-                    .fill(Color.borderSecondary)
+                    .fill(
+                        LinearGradient(
+                            colors: [Color.blue.opacity(0.4), Color.blue.opacity(0.2)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
                     .frame(width: 16, height: 12)
                     .cornerRadius(2)
 
@@ -219,14 +274,20 @@ struct ProjectionsChart: View {
                     .foregroundColor(.textSecondary)
             }
 
-            // Projected value legend
+            // Investment growth legend
             HStack(spacing: 8) {
                 Rectangle()
-                    .fill(Color.primaryPurple)
+                    .fill(
+                        LinearGradient(
+                            colors: [Color.primaryPurple.opacity(0.4), Color.primaryPurple.opacity(0.2)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
                     .frame(width: 16, height: 12)
                     .cornerRadius(2)
 
-                Text("Projected Value")
+                Text("Investment Growth")
                     .font(.caption1)
                     .foregroundColor(.textSecondary)
             }
