@@ -235,11 +235,3 @@ extension Portfolio {
         }
     }
 }
-
-extension InvestmentPie {
-    var averageAnnualReturn: Double {
-        // Mock AAR calculation based on pie name/allocations
-        // In real app, this would be calculated from historical performance of the allocations
-        return 8.5 // Default 8.5% AAR
-    }
-}

@@ -98,6 +98,9 @@ struct ZakatView: View {
                 // Nisab status card
                 nisabStatusView
 
+                // Purification Report Card
+                purificationReportCard
+
                 // Quick calculation from portfolio
                 portfolioQuickCalcView
 
@@ -113,6 +116,44 @@ struct ZakatView: View {
             .padding(.horizontal, 20)
             .padding(.top, 20)
             .padding(.bottom, 100)
+        }
+    }
+
+    private var purificationReportCard: some View {
+        ForsaCard {
+            HStack {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Image(systemName: "drop.fill")
+                            .foregroundColor(.primaryPurple)
+                        Text("Dividend Purification")
+                            .font(.headline)
+                            .foregroundColor(.textPrimary)
+                    }
+
+                    Text("Cleanse your earnings from non-compliant income.")
+                        .font(.caption1)
+                        .foregroundColor(.textSecondary)
+                }
+
+                Spacer()
+
+                Button(action: {
+                    viewModel.showingPurificationReport = true
+                }) {
+                    Text("View Report")
+                        .font(.calloutMedium)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(Color.primaryPurple)
+                        .cornerRadius(8)
+                }
+            }
+            .padding(.vertical, 4)
+        }
+        .sheet(isPresented: $viewModel.showingPurificationReport) {
+            PurificationReportView()
         }
     }
 

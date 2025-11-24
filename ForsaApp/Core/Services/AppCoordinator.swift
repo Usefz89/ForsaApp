@@ -12,6 +12,7 @@ class AppCoordinator: ObservableObject {
     @Published var isAuthenticated = false
     @Published var currentUser: User?
     @Published var isLoading = true
+    @Published var hasCompletedKYC = false
 
     init() {
         checkAuthenticationStatus()
@@ -24,6 +25,10 @@ class AppCoordinator: ObservableObject {
             self.isAuthenticated = false
             self.isLoading = false
         }
+    }
+    
+    private func checkKYCStatus() {
+        hasCompletedKYC = currentUser?.hasCompletedKYC ?? false
     }
 
     func signIn(email: String, password: String) async throws {
@@ -41,12 +46,15 @@ class AppCoordinator: ObservableObject {
             totalGainLossPercentage: 12.6,
             followersCount: 128,
             followingCount: 45,
-            isPublicProfile: true
+            isPublicProfile: true,
+            hasCompletedKYC: true,
+            psychologicalRiskScore: 65
         )
 
         await MainActor.run {
             self.currentUser = user
             self.isAuthenticated = true
+            self.checkKYCStatus()
         }
     }
 
@@ -64,18 +72,21 @@ class AppCoordinator: ObservableObject {
             totalGainLossPercentage: 0,
             followersCount: 0,
             followingCount: 0,
-            isPublicProfile: false
+            isPublicProfile: false,
+            hasCompletedKYC: false
         )
 
         await MainActor.run {
             self.currentUser = user
             self.isAuthenticated = true
+            self.checkKYCStatus()
         }
     }
 
     func signOut() {
         currentUser = nil
         isAuthenticated = false
+        hasCompletedKYC = false
     }
 
     func createDemoAccount() async {
@@ -84,7 +95,38 @@ class AppCoordinator: ObservableObject {
         await MainActor.run {
             self.currentUser = demoUser
             self.isAuthenticated = true
+            self.checkKYCStatus()
         }
+    }
+    
+    func completeOnboarding(riskScore: Int, goal: Goal) {
+        guard var user = currentUser else { return }
+        
+        // Update user with KYC completion
+        var updatedGoals = user.goals
+        updatedGoals.append(goal)
+        
+        let updatedUser = User(
+            id: user.id,
+            email: user.email,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            profileImageURL: user.profileImageURL,
+            isVerified: user.isVerified,
+            createdAt: user.createdAt,
+            totalPortfolioValue: user.totalPortfolioValue,
+            totalGainLoss: user.totalGainLoss,
+            totalGainLossPercentage: user.totalGainLossPercentage,
+            followersCount: user.followersCount,
+            followingCount: user.followingCount,
+            isPublicProfile: user.isPublicProfile,
+            hasCompletedKYC: true,
+            psychologicalRiskScore: riskScore,
+            goals: updatedGoals
+        )
+        
+        self.currentUser = updatedUser
+        self.hasCompletedKYC = true
     }
 }
 
@@ -95,16 +137,20 @@ struct AppCoordinatorView: View {
         Group {
             if coordinator.isLoading {
                 SplashView()
-            } else if coordinator.isAuthenticated {
-                TabBarView()
+            } else if !coordinator.isAuthenticated {
+                AuthenticationView()
+                    .environmentObject(coordinator)
+            } else if !coordinator.hasCompletedKYC {
+                OnboardingFlowView()
                     .environmentObject(coordinator)
             } else {
-                AuthenticationView()
+                TabBarView()
                     .environmentObject(coordinator)
             }
         }
         .animation(.easeInOut(duration: 0.3), value: coordinator.isAuthenticated)
         .animation(.easeInOut(duration: 0.3), value: coordinator.isLoading)
+        .animation(.easeInOut(duration: 0.3), value: coordinator.hasCompletedKYC)
     }
 }
 

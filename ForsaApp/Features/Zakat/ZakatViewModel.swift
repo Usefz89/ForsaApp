@@ -14,53 +14,38 @@ class ZakatViewModel: ObservableObject {
     @Published var showingAddAsset = false
     @Published var showingAddDebt = false
     @Published var showingPaymentSheet = false
+    @Published var showingPurificationReport = false
     @Published var selectedCategory: AssetCategory = .cash
     @Published var editingAsset: ZakatAsset?
 
     private let currentHijriYear = "1445" // This should be calculated dynamically
 
     init() {
-        loadDemoData()
+        loadData()
     }
 
     func loadCurrentCalculation() {
-        // In a real app, this would load from persistent storage
-        loadDemoData()
+        loadData()
     }
 
-    func loadDemoData() {
-        // Mock portfolio value
-        portfolioValue = 25420.50
+    func loadData() {
+        // Simulate fetching user's portfolio value
+        // In a real app, this would come from a PortfolioService or UserSession
+        if let user = MockDataService.shared.demoUsers.first {
+            portfolioValue = user.totalPortfolioValue
+        }
 
-        // Mock assets
-        let demoAssets = [
-            ZakatAsset(category: .cash, name: "Checking Account", value: 5000.00),
-            ZakatAsset(category: .savings, name: "Savings Account", value: 15000.00),
-            ZakatAsset(category: .gold, name: "Gold Jewelry", value: 3000.00),
-            ZakatAsset(category: .investments, name: "Stock Portfolio", value: 25420.50)
-        ]
-
-        let demoDebts = [
-            ZakatDebt(name: "Credit Card", amount: 2500.00, dueDate: Date().addingTimeInterval(60*60*24*30)),
-            ZakatDebt(name: "Personal Loan", amount: 5000.00, dueDate: Date().addingTimeInterval(60*60*24*90))
-        ]
-
-        let demoPayments = [
-            ZakatPayment(amount: 1205.52, hijriYear: "1444", recipient: "Local Islamic Center"),
-            ZakatPayment(amount: 987.30, hijriYear: "1443", recipient: "Charity Organization")
-        ]
-
-        calculation = ZakatCalculation(
-            assets: demoAssets,
-            debts: demoDebts,
-            hijriYear: currentHijriYear
-        )
-
-        zakatHistory = demoPayments
+        // Initialize calculation with default values if empty
+        if calculation.assets.isEmpty {
+            calculation = ZakatCalculation(
+                assets: [],
+                debts: [],
+                hijriYear: currentHijriYear
+            )
+        }
     }
 
     func importPortfolioAssets() {
-        // In a real app, this would fetch actual portfolio data
         let portfolioAsset = ZakatAsset(
             category: .investments,
             name: "Investment Portfolio",

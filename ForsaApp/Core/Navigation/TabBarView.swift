@@ -19,19 +19,6 @@ struct TabBarView: View {
                 }
                 .tag(Tab.portfolio)
 
-            MarketsView()
-                .tabItem {
-                    Image(systemName: selectedTab == .markets ? "chart.line.uptrend.xyaxis" : "chart.line.uptrend.xyaxis")
-                    Text("Markets")
-                }
-                .tag(Tab.markets)
-
-            CommunityView()
-                .tabItem {
-                    Image(systemName: selectedTab == .community ? "person.3.fill" : "person.3")
-                    Text("Discover")
-                }
-                .tag(Tab.community)
 
             ZakatView()
                 .tabItem {
@@ -80,16 +67,12 @@ struct TabBarView: View {
 
 enum Tab: String, CaseIterable {
     case portfolio = "portfolio"
-    case markets = "markets"
-    case community = "community"
     case zakat = "zakat"
     case profile = "profile"
 
     var title: String {
         switch self {
         case .portfolio: return "Portfolio"
-        case .markets: return "Markets"
-        case .community: return "Discover"
         case .zakat: return "Zakat"
         case .profile: return "Profile"
         }
@@ -98,8 +81,6 @@ enum Tab: String, CaseIterable {
     var iconName: String {
         switch self {
         case .portfolio: return "chart.pie"
-        case .markets: return "chart.line.uptrend.xyaxis"
-        case .community: return "person.3"
         case .zakat: return "heart"
         case .profile: return "person.crop.circle"
         }
@@ -108,8 +89,6 @@ enum Tab: String, CaseIterable {
     var selectedIconName: String {
         switch self {
         case .portfolio: return "chart.pie.fill"
-        case .markets: return "chart.line.uptrend.xyaxis"
-        case .community: return "person.3.fill"
         case .zakat: return "heart.fill"
         case .profile: return "person.crop.circle.fill"
         }

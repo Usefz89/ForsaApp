@@ -8,17 +8,17 @@
 import SwiftUI
 
 struct PieChartView: View {
-    let allocations: [PieAllocation]
+    let allocations: [AssetAllocation]
     let isInteractive: Bool
-    let onAllocationTapped: ((PieAllocation) -> Void)?
+    let onAllocationTapped: ((AssetAllocation) -> Void)?
 
-    @State private var selectedAllocation: PieAllocation?
+    @State private var selectedAllocation: AssetAllocation?
     @State private var animateChart: Bool = false
 
     private let chartSize: CGFloat = 200
     private let strokeWidth: CGFloat = 40
 
-    init(allocations: [PieAllocation], isInteractive: Bool = false, onAllocationTapped: ((PieAllocation) -> Void)? = nil) {
+    init(allocations: [AssetAllocation], isInteractive: Bool = false, onAllocationTapped: ((AssetAllocation) -> Void)? = nil) {
         self.allocations = allocations
         self.isInteractive = isInteractive
         self.onAllocationTapped = onAllocationTapped
@@ -34,21 +34,21 @@ struct PieChartView: View {
                     .frame(width: chartSize, height: chartSize)
 
                 // Chart segments
-                ForEach(Array(allocations.enumerated()), id: \.element.stockId) { index, allocation in
+                ForEach(Array(allocations.enumerated()), id: \.element.id) { index, allocation in
                     PieSegmentView(
                         allocation: allocation,
                         startAngle: startAngle(for: index),
                         endAngle: endAngle(for: index),
                         color: colorForIndex(index),
                         strokeWidth: strokeWidth,
-                        isSelected: selectedAllocation?.stockId == allocation.stockId,
+                        isSelected: selectedAllocation?.id == allocation.id,
                         animationProgress: animateChart ? 1.0 : 0.0
                     )
                     .frame(width: chartSize, height: chartSize)
                     .onTapGesture {
                         if isInteractive {
                             withAnimation(.easeInOut(duration: 0.3)) {
-                                selectedAllocation = selectedAllocation?.stockId == allocation.stockId ? nil : allocation
+                                selectedAllocation = selectedAllocation?.id == allocation.id ? nil : allocation
                             }
                             onAllocationTapped?(allocation)
                         }
@@ -58,12 +58,12 @@ struct PieChartView: View {
                 // Center content
                 VStack(spacing: 4) {
                     if let selected = selectedAllocation {
-                        Text(selected.symbol)
+                        Text(selected.ticker)
                             .font(.headline)
                             .fontWeight(.bold)
                             .foregroundColor(.textPrimary)
 
-                        Text("\(String(format: "%.1f", selected.percentage))%")
+                        Text("\(String(format: "%.1f", selected.percentage * 100))%")
                             .font(.title2)
                             .fontWeight(.semibold)
                             .foregroundColor(.primaryPurple)
@@ -72,7 +72,7 @@ struct PieChartView: View {
                             .font(.callout)
                             .foregroundColor(.textSecondary)
 
-                        Text("\(allocations.count) stocks")
+                        Text("\(allocations.count) ETFs")
                             .font(.headline)
                             .fontWeight(.semibold)
                             .foregroundColor(.textPrimary)
@@ -80,7 +80,7 @@ struct PieChartView: View {
                 }
                 .frame(width: chartSize - strokeWidth - 20, height: chartSize - strokeWidth - 20)
                 .contentTransition(.identity)
-                .animation(.easeInOut(duration: 0.3), value: selectedAllocation?.stockId)
+                .animation(.easeInOut(duration: 0.3), value: selectedAllocation?.id)
             }
 
             // Legend
@@ -97,19 +97,19 @@ struct PieChartView: View {
 
     private var chartLegend: some View {
         LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2), spacing: 12) {
-            ForEach(Array(allocations.enumerated()), id: \.element.stockId) { index, allocation in
+            ForEach(Array(allocations.enumerated()), id: \.element.id) { index, allocation in
                 HStack(spacing: 8) {
                     Circle()
                         .fill(colorForIndex(index))
                         .frame(width: 12, height: 12)
 
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(allocation.symbol)
+                        Text(allocation.ticker)
                             .font(.caption1)
                             .fontWeight(.medium)
                             .foregroundColor(.textPrimary)
 
-                        Text("\(String(format: "%.1f", allocation.percentage))%")
+                        Text("\(String(format: "%.1f", allocation.percentage * 100))%")
                             .font(.caption2)
                             .foregroundColor(.textSecondary)
                     }
@@ -119,17 +119,17 @@ struct PieChartView: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
                 .background(
-                    selectedAllocation?.stockId == allocation.stockId ?
+                    selectedAllocation?.id == allocation.id ?
                     Color.primaryPurple.opacity(0.1) :
                     Color.backgroundSecondary
                 )
                 .cornerRadius(8)
-                .scaleEffect(selectedAllocation?.stockId == allocation.stockId ? 1.02 : 1.0)
-                .animation(.easeInOut(duration: 0.2), value: selectedAllocation?.stockId)
+                .scaleEffect(selectedAllocation?.id == allocation.id ? 1.02 : 1.0)
+                .animation(.easeInOut(duration: 0.2), value: selectedAllocation?.id)
                 .onTapGesture {
                     if isInteractive {
                         withAnimation(.easeInOut(duration: 0.3)) {
-                            selectedAllocation = selectedAllocation?.stockId == allocation.stockId ? nil : allocation
+                            selectedAllocation = selectedAllocation?.id == allocation.id ? nil : allocation
                         }
                         onAllocationTapped?(allocation)
                     }
@@ -140,12 +140,12 @@ struct PieChartView: View {
 
     private func startAngle(for index: Int) -> Angle {
         let previousPercentages = allocations.prefix(index).reduce(0) { $0 + $1.percentage }
-        return Angle.degrees(-90 + (previousPercentages / 100) * 360)
+        return Angle.degrees(-90 + (previousPercentages) * 360)
     }
 
     private func endAngle(for index: Int) -> Angle {
         let previousPercentages = allocations.prefix(index + 1).reduce(0) { $0 + $1.percentage }
-        return Angle.degrees(-90 + (previousPercentages / 100) * 360)
+        return Angle.degrees(-90 + (previousPercentages) * 360)
     }
 
     private func colorForIndex(_ index: Int) -> Color {
@@ -155,7 +155,7 @@ struct PieChartView: View {
 }
 
 struct PieSegmentView: View {
-    let allocation: PieAllocation
+    let allocation: AssetAllocation
     let startAngle: Angle
     let endAngle: Angle
     let color: Color
@@ -200,7 +200,7 @@ struct PieSegmentView: View {
 
 // MARK: - Compact Pie Chart for smaller spaces
 struct CompactPieChartView: View {
-    let allocations: [PieAllocation]
+    let allocations: [AssetAllocation]
     let size: CGFloat
 
     private var strokeWidth: CGFloat {
@@ -215,7 +215,7 @@ struct CompactPieChartView: View {
                 .frame(width: size, height: size)
 
             // Chart segments
-            ForEach(Array(allocations.enumerated()), id: \.element.stockId) { index, allocation in
+            ForEach(Array(allocations.enumerated()), id: \.element.id) { index, allocation in
                 Circle()
                     .trim(from: trimFrom(for: index), to: trimTo(for: index))
                     .stroke(
@@ -236,7 +236,7 @@ struct CompactPieChartView: View {
                     .fontWeight(.bold)
                     .foregroundColor(.textPrimary)
 
-                Text("stocks")
+                Text("ETFs")
                     .font(.caption2)
                     .foregroundColor(.textSecondary)
             }
@@ -245,12 +245,12 @@ struct CompactPieChartView: View {
 
     private func trimFrom(for index: Int) -> CGFloat {
         let previousPercentages = allocations.prefix(index).reduce(0) { $0 + $1.percentage }
-        return previousPercentages / 100
+        return previousPercentages
     }
 
     private func trimTo(for index: Int) -> CGFloat {
         let previousPercentages = allocations.prefix(index + 1).reduce(0) { $0 + $1.percentage }
-        return previousPercentages / 100
+        return previousPercentages
     }
 
     private func colorForIndex(_ index: Int) -> Color {
@@ -262,11 +262,11 @@ struct CompactPieChartView: View {
 // MARK: - Preview
 #Preview {
     let sampleAllocations = [
-        PieAllocation(stockId: UUID(), symbol: "AAPL", name: "Apple Inc.", percentage: 35.0),
-        PieAllocation(stockId: UUID(), symbol: "MSFT", name: "Microsoft Corp.", percentage: 25.0),
-        PieAllocation(stockId: UUID(), symbol: "GOOGL", name: "Alphabet Inc.", percentage: 20.0),
-        PieAllocation(stockId: UUID(), symbol: "NVDA", name: "NVIDIA Corp.", percentage: 15.0),
-        PieAllocation(stockId: UUID(), symbol: "AMZN", name: "Amazon.com Inc.", percentage: 5.0)
+        AssetAllocation(ticker: "SPUS", name: "US Islamic Equity", percentage: 0.35),
+        AssetAllocation(ticker: "SPSK", name: "Global Sukuk", percentage: 0.25),
+        AssetAllocation(ticker: "UMMA", name: "Int'l Islamic Equity", percentage: 0.20),
+        AssetAllocation(ticker: "GLDM", name: "Gold", percentage: 0.15),
+        AssetAllocation(ticker: "SPRE", name: "Islamic REITs", percentage: 0.05)
     ]
 
     return VStack(spacing: 40) {
@@ -278,7 +278,7 @@ struct CompactPieChartView: View {
             allocations: sampleAllocations,
             isInteractive: true
         ) { allocation in
-            print("Tapped: \(allocation.symbol)")
+            print("Tapped: \(allocation.ticker)")
         }
 
         HStack(spacing: 20) {

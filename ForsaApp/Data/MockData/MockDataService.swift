@@ -310,34 +310,6 @@ class MockDataService {
         )
     ]
 
-    // MARK: - Investment Pies
-    lazy var investmentPies: [InvestmentPie] = [
-        InvestmentPie(
-            name: "Tech Leaders",
-            description: "Top technology companies following Sharia principles",
-            allocations: [
-                PieAllocation(stockId: halalStocks[2].id, symbol: "AAPL", name: "Apple Inc.", percentage: 40.0),
-                PieAllocation(stockId: halalStocks[3].id, symbol: "MSFT", name: "Microsoft Corporation", percentage: 35.0),
-                PieAllocation(stockId: halalStocks[5].id, symbol: "NVDA", name: "NVIDIA Corporation", percentage: 25.0)
-            ],
-            totalInvested: 5000.0,
-            autoInvestEnabled: true,
-            autoInvestAmount: 250.0,
-            rebalanceFrequency: .monthly
-        ),
-        InvestmentPie(
-            name: "Regional Focus",
-            description: "Focus on GCC market leaders",
-            allocations: [
-                PieAllocation(stockId: halalStocks[0].id, symbol: "KFH", name: "Kuwait Finance House", percentage: 60.0),
-                PieAllocation(stockId: halalStocks[1].id, symbol: "2222.SR", name: "Saudi Aramco", percentage: 40.0)
-            ],
-            totalInvested: 3000.0,
-            autoInvestEnabled: false,
-            rebalanceFrequency: .quarterly
-        )
-    ]
-
     // MARK: - Helper Methods
     func getAllStocks() -> [Stock] {
         return halalStocks + halalETFs

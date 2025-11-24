@@ -132,14 +132,14 @@ struct OnboardingPage {
             description: "Every stock and ETF is pre-screened for Sharia compliance. Invest with confidence knowing your portfolio aligns with Islamic principles."
         ),
         OnboardingPage(
-            iconName: "chart.pie.fill",
-            title: "Build Diversified Portfolios",
-            description: "Create investment pies with fractional shares. Set up auto-invest and let your wealth grow consistently over time."
+            iconName: "chart.xyaxis.line",
+            title: "Goal-Based Investing",
+            description: "Set your financial goals and let our Robo-Advisor build a personalized portfolio tailored to your timeline and risk profile."
         ),
         OnboardingPage(
-            iconName: "person.3.fill",
-            title: "Learn from the Community",
-            description: "Discover successful portfolios from other investors. Copy strategies that work and build your investment knowledge."
+            iconName: "arrow.triangle.2.circlepath",
+            title: "Smart Rebalancing",
+            description: "We automatically rebalance your portfolio to maintain your target risk level, keeping your investments on track effortlessly."
         ),
         OnboardingPage(
             iconName: "heart.fill",

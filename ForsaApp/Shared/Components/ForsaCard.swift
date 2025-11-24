@@ -174,89 +174,6 @@ struct StockCard: View {
     }
 }
 
-struct PieCard: View {
-    let pie: InvestmentPie
-    let performance: String
-    let isPositive: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            ForsaCard {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(pie.name)
-                                .font(.headline)
-                                .foregroundColor(.textPrimary)
-                                .lineLimit(1)
-
-                            if let description = pie.description {
-                                Text(description)
-                                    .font(.caption1)
-                                    .foregroundColor(.textSecondary)
-                                    .lineLimit(2)
-                            }
-                        }
-
-                        Spacer()
-
-                        Image(systemName: "chart.pie.fill")
-                            .font(.title3)
-                            .foregroundColor(.primaryPurple)
-                    }
-
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Total Invested")
-                                .font(.caption1)
-                                .foregroundColor(.textSecondary)
-
-                            Text("$\(String(format: "%.2f", pie.totalInvested))")
-                                .font(.calloutMedium)
-                                .foregroundColor(.textPrimary)
-                        }
-
-                        Spacer()
-
-                        VStack(alignment: .trailing, spacing: 2) {
-                            Text("Performance")
-                                .font(.caption1)
-                                .foregroundColor(.textSecondary)
-
-                            Text(performance)
-                                .font(.calloutMedium)
-                                .foregroundColor(isPositive ? .gainGreen : .lossRed)
-                        }
-                    }
-
-                    // Pie allocations preview
-                    HStack(spacing: 8) {
-                        ForEach(pie.allocations.prefix(3)) { allocation in
-                            HStack(spacing: 4) {
-                                Circle()
-                                    .fill(Color.primaryPurple)
-                                    .frame(width: 8, height: 8)
-
-                                Text(allocation.symbol)
-                                    .font(.caption2)
-                                    .foregroundColor(.textSecondary)
-                            }
-                        }
-
-                        if pie.allocations.count > 3 {
-                            Text("+\(pie.allocations.count - 3) more")
-                                .font(.caption2)
-                                .foregroundColor(.textMuted)
-                        }
-                    }
-                }
-            }
-        }
-        .buttonStyle(PlainButtonStyle())
-    }
-}
-
 // MARK: - Preview
 #Preview {
     ScrollView {
@@ -280,21 +197,6 @@ struct PieCard: View {
                     volume: 45_000_000,
                     shariaCompliance: .compliant
                 )
-            ) { }
-
-            PieCard(
-                pie: InvestmentPie(
-                    name: "Halal Tech Growth",
-                    description: "Sharia-compliant technology stocks",
-                    allocations: [
-                        PieAllocation(stockId: UUID(), symbol: "AAPL", name: "Apple", percentage: 40),
-                        PieAllocation(stockId: UUID(), symbol: "MSFT", name: "Microsoft", percentage: 35),
-                        PieAllocation(stockId: UUID(), symbol: "GOOGL", name: "Alphabet", percentage: 25)
-                    ],
-                    totalInvested: 5000
-                ),
-                performance: "+15.2%",
-                isPositive: true
             ) { }
         }
         .padding()

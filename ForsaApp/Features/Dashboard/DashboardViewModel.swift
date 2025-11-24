@@ -14,11 +14,8 @@ class DashboardViewModel: ObservableObject {
     @Published var totalGainLoss: Double = 0
     @Published var totalGainLossPercentage: Double = 0
     @Published var totalDividends: Double = 0
-    @Published var topHoldings: [Holding] = []
-    @Published var recentTransactions: [Transaction] = []
     @Published var chartData: [ChartDataPoint] = []
     @Published var selectedTimeframe: TimeFrame = .oneWeek
-    @Published var investmentPies: [InvestmentPie] = []
     @Published var isLoading = false
 
     var isPortfolioPositive: Bool {
@@ -38,26 +35,26 @@ class DashboardViewModel: ObservableObject {
     }
 
     init() {
-        loadData()
+        // Initial empty state
     }
 
-    func loadData() {
-        // Load demo data
-        loadPortfolioSummary()
-        loadTopHoldings()
-        loadRecentTransactions()
-        loadInvestmentPies()
+    func loadData(goals: [Goal]) {
+        self.totalPortfolioValue = goals.reduce(0) { $0 + $1.currentValue }
+        self.totalInvested = goals.reduce(0) { $0 + ($1.targetAmount * 0.5) } // Mock invested amount
+        self.totalGainLoss = totalPortfolioValue - totalInvested
+        self.totalGainLossPercentage = totalInvested > 0 ? (totalGainLoss / totalInvested) * 100 : 0
+        
         generateChartData()
     }
-
+    
     @MainActor
-    func refreshData() async {
+    func refreshData(goals: [Goal]) async {
         isLoading = true
 
         // Simulate API call delay
         try? await Task.sleep(nanoseconds: 1_000_000_000)
 
-        loadData()
+        loadData(goals: goals)
         isLoading = false
     }
 
@@ -69,99 +66,13 @@ class DashboardViewModel: ObservableObject {
         totalDividends = 485.75
     }
 
-    private func loadTopHoldings() {
-        let mockHoldings = [
-            Holding(
-                stockId: UUID(),
-                symbol: "AAPL",
-                name: "Apple Inc.",
-                shares: 15.2543,
-                averagePrice: 165.30,
-                currentPrice: 175.43,
-                allocation: 35.2
-            ),
-            Holding(
-                stockId: UUID(),
-                symbol: "MSFT",
-                name: "Microsoft Corporation",
-                shares: 8.7321,
-                averagePrice: 285.50,
-                currentPrice: 298.75,
-                allocation: 28.7
-            ),
-            Holding(
-                stockId: UUID(),
-                symbol: "KFH",
-                name: "Kuwait Finance House",
-                shares: 250.0,
-                averagePrice: 0.85,
-                currentPrice: 0.92,
-                allocation: 15.3
-            ),
-            Holding(
-                stockId: UUID(),
-                symbol: "GOOGL",
-                name: "Alphabet Inc.",
-                shares: 3.1234,
-                averagePrice: 125.80,
-                currentPrice: 132.45,
-                allocation: 12.1
-            )
-        ]
-
-        topHoldings = mockHoldings
-    }
-
-    private func loadRecentTransactions() {
-        let calendar = Calendar.current
-        let now = Date()
-
-        let mockTransactions = [
-            Transaction(
-                type: .buy,
-                stockId: UUID(),
-                symbol: "AAPL",
-                stockName: "Apple Inc.",
-                shares: 2.5,
-                pricePerShare: 175.43,
-                totalAmount: 438.58,
-                executedAt: now
-            ),
-            Transaction(
-                type: .dividend,
-                stockId: UUID(),
-                symbol: "MSFT",
-                stockName: "Microsoft Corporation",
-                totalAmount: 12.50,
-                executedAt: calendar.date(byAdding: .day, value: -1, to: now) ?? now
-            ),
-            Transaction(
-                type: .sell,
-                stockId: UUID(),
-                symbol: "KFH",
-                stockName: "Kuwait Finance House",
-                shares: 100.0,
-                pricePerShare: 0.92,
-                totalAmount: 92.00,
-                executedAt: calendar.date(byAdding: .day, value: -2, to: now) ?? now
-            ),
-            Transaction(
-                type: .deposit,
-                totalAmount: 1000.00,
-                executedAt: calendar.date(byAdding: .day, value: -3, to: now) ?? now
-            )
-        ]
-
-        recentTransactions = Array(mockTransactions.prefix(3))
-    }
-
     private func generateChartData() {
         let calendar = Calendar.current
         let now = Date()
         var data: [ChartDataPoint] = []
 
-        let baseValue = 22000.0
-        let currentValue = totalPortfolioValue
+        let baseValue = totalPortfolioValue > 0 ? totalPortfolioValue * 0.9 : 10000 // Fallback for empty
+        let currentValue = totalPortfolioValue > 0 ? totalPortfolioValue : 10000
 
         // Generate data points based on selected timeframe
         let days = selectedTimeframe.days
@@ -176,11 +87,6 @@ class DashboardViewModel: ObservableObject {
         }
 
         chartData = data
-    }
-
-    private func loadInvestmentPies() {
-        // Load user's investment pies from mock data
-        investmentPies = MockDataService.shared.investmentPies
     }
 }
 
