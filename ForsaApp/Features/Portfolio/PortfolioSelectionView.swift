@@ -12,7 +12,7 @@ struct PortfolioSelectionView: View {
     let onSelect: (RiskLevel) -> Void
     
     @State private var selectedRisk: RiskLevel
-    @State private var detailsRisk: RiskLevel?
+    @State private var detailsRisk: RiskLevel // Non-optional to avoid nil issues
     @State private var showDetails = false
     @Environment(\.presentationMode) var presentationMode
     
@@ -20,6 +20,7 @@ struct PortfolioSelectionView: View {
         self.recommendedRisk = recommendedRisk
         self.onSelect = onSelect
         _selectedRisk = State(initialValue: recommendedRisk)
+        _detailsRisk = State(initialValue: recommendedRisk) // Initialize with recommended
     }
     
     var body: some View {
@@ -86,9 +87,7 @@ struct PortfolioSelectionView: View {
                 }
             }
             .sheet(isPresented: $showDetails) {
-                if let risk = detailsRisk {
-                    PortfolioDetailView(risk: risk)
-                }
+                PortfolioDetailView(risk: detailsRisk)
             }
         }
     }
