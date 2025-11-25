@@ -67,6 +67,11 @@ class AppCoordinator: ObservableObject {
                         }
                         self.isLoading = false
                     }
+                    
+                    // Set up server-side auto-invest if portfolio is selected
+                    if let portfolio = self.selectedPortfolio {
+                        await self.setupServerSideAutoInvest(portfolio: portfolio)
+                    }
                 }
             } catch {
                 print("❌ Failed to decode saved user: \(error)")
@@ -447,7 +452,8 @@ class AppCoordinator: ObservableObject {
     }
     
     /// Check for uninvested cash and auto-invest if conditions are met
-    /// Called on app refresh/launch to catch approved transfers
+    /// NOTE: This is a FALLBACK mechanism. Primary auto-invest is handled by
+    /// Alpaca's Rebalancing API on their server (see setupServerSideAutoInvest)
     @discardableResult
     func checkAndAutoInvestAvailableCash() async -> Bool {
         // Skip for demo accounts
@@ -502,7 +508,7 @@ class AppCoordinator: ObservableObject {
         }
     }
     
-    /// Updates the user's selected portfolio
+    /// Updates the user's selected portfolio and sets up server-side auto-invest
     func updateSelectedPortfolio(_ portfolio: RiskLevel) {
         print("📊 Updating selected portfolio to: \(portfolio.title)")
         
@@ -553,7 +559,35 @@ class AppCoordinator: ObservableObject {
             currentUser = user
         }
         
+        // Set up server-side auto-invest (Alpaca Rebalancing API)
+        Task {
+            await setupServerSideAutoInvest(portfolio: portfolio)
+        }
+        
         print("✅ Portfolio updated to \(portfolio.title)")
+    }
+    
+    /// Sets up Alpaca's Rebalancing API for automatic investment of deposits
+    private func setupServerSideAutoInvest(portfolio: RiskLevel) async {
+        // Skip for demo accounts
+        guard let user = currentUser, !user.isDemoAccount else {
+            print("⏭️ Server-side auto-invest skipped: Demo account")
+            return
+        }
+        
+        guard let accountId = alpacaAccountId else {
+            print("⏭️ Server-side auto-invest skipped: No account ID")
+            return
+        }
+        
+        do {
+            try await AlpacaTradingService.shared.setupAutoInvest(accountId: accountId, portfolio: portfolio)
+            print("✅ Server-side auto-invest configured for \(portfolio.title)")
+        } catch {
+            // Log error but don't fail - client-side polling is still active as backup
+            print("⚠️ Server-side auto-invest setup failed: \(error.localizedDescription)")
+            print("   Client-side polling will be used as fallback")
+        }
     }
 }
 

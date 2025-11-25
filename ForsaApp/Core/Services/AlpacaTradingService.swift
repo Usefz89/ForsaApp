@@ -760,6 +760,192 @@ class AlpacaTradingService: ObservableObject {
         return result.quote.ap 
     }
     
+    // MARK: - Rebalancing API (Server-Side Auto-Invest)
+    
+    /// Creates a rebalancing portfolio on Alpaca that matches our RiskLevel portfolio
+    func createRebalancingPortfolio(portfolio: RiskLevel) async throws -> String {
+        print("📊 Creating rebalancing portfolio: \(portfolio.title)")
+        
+        let url = URL(string: "\(brokerBaseURL)/rebalancing/portfolios")!
+        var request = try createBrokerRequest(url: url, method: "POST")
+        
+        // Build weights from portfolio allocations
+        var weights: [[String: Any]] = []
+        for allocation in portfolio.allocations {
+            weights.append([
+                "type": "asset",
+                "symbol": allocation.ticker,
+                "percent": String(format: "%.0f", allocation.percentage * 100)
+            ])
+        }
+        
+        let body: [String: Any] = [
+            "name": "Forsa_\(portfolio.rawValue)",
+            "description": portfolio.description,
+            "weights": weights,
+            "cooldown_days": 1,  // Minimum days between rebalances
+            "rebalance_conditions": [
+                [
+                    "type": "drift_band",
+                    "sub_type": "absolute",
+                    "percent": "5"  // Rebalance if drift exceeds 5%
+                ],
+                [
+                    "type": "calendar",
+                    "sub_type": "weekly",
+                    "day": "monday"
+                ]
+            ]
+        ]
+        
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        if let responseString = String(data: data, encoding: .utf8) {
+            print("📥 Create Portfolio Response: \(responseString)")
+        }
+        
+        try validateResponse(response, data: data)
+        
+        // Parse response to get portfolio ID
+        if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let portfolioId = json["id"] as? String {
+            print("✅ Created rebalancing portfolio: \(portfolioId)")
+            return portfolioId
+        }
+        
+        throw NSError(domain: "RebalancingAPI", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to parse portfolio ID"])
+    }
+    
+    /// Gets existing rebalancing portfolio by name, or creates one if it doesn't exist
+    func getOrCreateRebalancingPortfolio(portfolio: RiskLevel) async throws -> String {
+        let portfolioName = "Forsa_\(portfolio.rawValue)"
+        
+        // First, try to find existing portfolio
+        let url = URL(string: "\(brokerBaseURL)/rebalancing/portfolios")!
+        let request = try createBrokerRequest(url: url, method: "GET")
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validateResponse(response, data: data)
+        
+        if let portfolios = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+            if let existing = portfolios.first(where: { ($0["name"] as? String) == portfolioName }),
+               let portfolioId = existing["id"] as? String {
+                print("✅ Found existing rebalancing portfolio: \(portfolioId)")
+                return portfolioId
+            }
+        }
+        
+        // Portfolio doesn't exist, create it
+        return try await createRebalancingPortfolio(portfolio: portfolio)
+    }
+    
+    /// Subscribes an account to a rebalancing portfolio for auto-invest
+    func subscribeAccountToPortfolio(accountId: String, portfolioId: String) async throws {
+        print("📝 Subscribing account \(accountId) to portfolio \(portfolioId)")
+        
+        let url = URL(string: "\(brokerBaseURL)/rebalancing/subscriptions")!
+        var request = try createBrokerRequest(url: url, method: "POST")
+        
+        let body: [String: Any] = [
+            "account_id": accountId,
+            "portfolio_id": portfolioId
+        ]
+        
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        if let responseString = String(data: data, encoding: .utf8) {
+            print("📥 Subscription Response: \(responseString)")
+        }
+        
+        try validateResponse(response, data: data)
+        print("✅ Account subscribed to rebalancing portfolio")
+    }
+    
+    /// Checks if an account is subscribed to any rebalancing portfolio
+    func getAccountSubscription(accountId: String) async throws -> (subscriptionId: String, portfolioId: String)? {
+        let url = URL(string: "\(brokerBaseURL)/rebalancing/subscriptions?account_id=\(accountId)")!
+        let request = try createBrokerRequest(url: url, method: "GET")
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validateResponse(response, data: data)
+        
+        if let subscriptions = try JSONSerialization.jsonObject(with: data) as? [[String: Any]],
+           let subscription = subscriptions.first,
+           let subscriptionId = subscription["id"] as? String,
+           let portfolioId = subscription["portfolio_id"] as? String {
+            return (subscriptionId, portfolioId)
+        }
+        
+        return nil
+    }
+    
+    /// Removes an account's subscription to allow manual trading or switch portfolios
+    func unsubscribeAccount(subscriptionId: String) async throws {
+        print("🗑️ Removing subscription: \(subscriptionId)")
+        
+        let url = URL(string: "\(brokerBaseURL)/rebalancing/subscriptions/\(subscriptionId)")!
+        let request = try createBrokerRequest(url: url, method: "DELETE")
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validateResponse(response, data: data)
+        print("✅ Subscription removed")
+    }
+    
+    /// Triggers an immediate rebalance/invest run for an account
+    func triggerInvestRun(accountId: String, portfolioId: String) async throws {
+        print("🚀 Triggering invest run for account \(accountId)")
+        
+        let url = URL(string: "\(brokerBaseURL)/rebalancing/runs")!
+        var request = try createBrokerRequest(url: url, method: "POST")
+        
+        let body: [String: Any] = [
+            "account_id": accountId,
+            "portfolio_id": portfolioId,
+            "type": "full_rebalance"  // Invests all available cash
+        ]
+        
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        if let responseString = String(data: data, encoding: .utf8) {
+            print("📥 Invest Run Response: \(responseString)")
+        }
+        
+        try validateResponse(response, data: data)
+        print("✅ Invest run triggered")
+    }
+    
+    /// Sets up complete auto-invest for an account with a portfolio
+    /// Call this when user selects a portfolio
+    func setupAutoInvest(accountId: String, portfolio: RiskLevel) async throws {
+        print("⚙️ Setting up auto-invest for \(portfolio.title)")
+        
+        // 1. Check if already subscribed to a different portfolio
+        if let existingSubscription = try await getAccountSubscription(accountId: accountId) {
+            // Unsubscribe from old portfolio
+            try await unsubscribeAccount(subscriptionId: existingSubscription.subscriptionId)
+        }
+        
+        // 2. Get or create the rebalancing portfolio
+        let portfolioId = try await getOrCreateRebalancingPortfolio(portfolio: portfolio)
+        
+        // 3. Subscribe the account
+        try await subscribeAccountToPortfolio(accountId: accountId, portfolioId: portfolioId)
+        
+        // 4. Trigger immediate invest if there's cash available
+        let account = try await fetchAccountDetails(accountId: accountId)
+        if account.cashValue >= 1.0 {
+            try await triggerInvestRun(accountId: accountId, portfolioId: portfolioId)
+        }
+        
+        print("✅ Auto-invest setup complete for \(portfolio.title)")
+    }
+    
     // MARK: - Helpers
     
     private func createBrokerRequest(url: URL, method: String) throws -> URLRequest {
