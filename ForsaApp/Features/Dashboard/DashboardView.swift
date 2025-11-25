@@ -28,6 +28,11 @@ struct DashboardView: View {
                     }
                     
                     if viewModel.needsAccountCreation {
+                        // If needsAccountCreation is true, it means we might be in Broker Mode
+                        // and the user hasn't created a sub-account yet.
+                        // However, we now try to handle this during Sign Up.
+                        // If this is still true here, something might have failed,
+                        // so we offer a retry button.
                         createAccountCard
                     }
                     
@@ -56,7 +61,9 @@ struct DashboardView: View {
             }
         }
         .onAppear {
-            viewModel.checkAccountStatus()
+            Task {
+                await viewModel.checkAccountStatus()
+            }
         }
         .overlay(isLoadingOverlay)
     }

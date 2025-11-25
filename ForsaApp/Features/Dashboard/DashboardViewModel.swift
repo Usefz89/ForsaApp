@@ -52,15 +52,36 @@ class DashboardViewModel: ObservableObject {
     }
     
     init() {
-        checkAccountStatus()
+        Task { await checkAccountStatus() }
     }
     
-    func checkAccountStatus() {
-        if let id = UserDefaults.standard.string(forKey: "alpaca_account_id") {
-            self.accountId = id
-            Task { await refreshData() }
+    @MainActor
+    func checkAccountStatus() async {
+        // 1. Initialize Service (Check keys)
+        let isTradingMode = await alpacaService.initializeSession()
+        
+        if isTradingMode {
+            // Keys are for Trading API -> No creation needed
+            if let account = alpacaService.currentAccount {
+                self.accountId = account.id
+                UserDefaults.standard.set(account.id, forKey: "alpaca_account_id")
+            }
+            self.needsAccountCreation = false
+            await refreshData()
         } else {
-            needsAccountCreation = true
+            // Broker Mode: Check if we have a stored ID
+            if let id = UserDefaults.standard.string(forKey: "alpaca_account_id") {
+                self.accountId = id
+                self.needsAccountCreation = false
+                await refreshData()
+            } else {
+                // If missing, we prompt creation (but user likely should have done this at signup)
+                // But for existing users or dev testing, we might still need this.
+                // However, user requested: "create account on the first page... then having create account button again in the home page. fix this."
+                // So we likely shouldn't show it if we can avoid it, OR the user means "remove the button".
+                // Let's keep the state logic but maybe the View won't show the button if we are clever.
+                self.needsAccountCreation = true
+            }
         }
     }
     

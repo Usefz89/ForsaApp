@@ -11,8 +11,11 @@ struct AppConfig {
     struct Alpaca {
         // MARK: - WARNING: NEVER STORE SECRETS IN CLIENT CODE IN PRODUCTION
         // These should be fetched from a secure backend or injected at build time.
-        static let apiKey = "CKDZN7II6ODMWF4B4PZ2RD5CLS"
-        static let apiSecret = "DU2mPL5f46TeKXQt4qf84gkAQoLNA8fDwK6JWm9sXyfV"
+        
+        // TODO: Replace with your BROKER API credentials (not Trading API)
+        // Get these from: https://broker-app.alpaca.markets/
+        static let apiKey = "CKZPSCCOMX2OK2FGBAWMRQX62J"
+        static let apiSecret = "dThe4wBZF4TZnCk2E9wq2SGNJk8DSdyWAFwXd5ujBs6"
         
         // Broker API Base URL
         static let brokerBaseURL = "https://broker-api.sandbox.alpaca.markets/v1"

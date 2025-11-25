@@ -12,12 +12,12 @@ import Foundation
 struct AlpacaAccount: Codable, Identifiable {
     let id: String
     let accountNumber: String?
-    let status: String
-    let currency: String
-    let lastEquity: String
-    let cash: String
-    let buyingPower: String
-    let createdAt: String
+    let status: String?
+    let currency: String?
+    let lastEquity: String?
+    let cash: String?
+    let buyingPower: String?
+    let createdAt: String?
     
     enum CodingKeys: String, CodingKey {
         case id
@@ -31,9 +31,9 @@ struct AlpacaAccount: Codable, Identifiable {
     }
     
     // Helpers to convert string values to Double
-    var equityValue: Double { Double(lastEquity) ?? 0.0 }
-    var cashValue: Double { Double(cash) ?? 0.0 }
-    var buyingPowerValue: Double { Double(buyingPower) ?? 0.0 }
+    var equityValue: Double { Double(lastEquity ?? "0") ?? 0.0 }
+    var cashValue: Double { Double(cash ?? "0") ?? 0.0 }
+    var buyingPowerValue: Double { Double(buyingPower ?? "0") ?? 0.0 }
 }
 
 struct AlpacaPosition: Codable, Identifiable {

@@ -59,7 +59,52 @@ class AppCoordinator: ObservableObject {
     }
 
     func signUp(email: String, password: String, firstName: String, lastName: String) async throws {
-        // Simulate API call
+        // 1. Initialize Alpaca Session (Determine Mode: Broker vs Trading)
+        let sessionVerified = await AlpacaTradingService.shared.initializeSession()
+        print("🔐 Session Verified: \(sessionVerified)")
+        print("🔐 Is Trading Mode: \(AlpacaTradingService.shared.isTradingMode)")
+        
+        var alpacaAccountId: String?
+        
+        // 2. Create or Link Alpaca Account
+        do {
+            if AlpacaTradingService.shared.isTradingMode {
+                // Paper Trading Mode: Just link the existing key's account
+                print("📌 Using Trading Mode - linking existing account")
+                if let account = AlpacaTradingService.shared.currentAccount {
+                    alpacaAccountId = account.id
+                } else {
+                    // Should not happen if initializeSession returned true, but double check
+                    // Force fetch to be sure
+                     _ = await AlpacaTradingService.shared.initializeSession() // Re-check
+                     alpacaAccountId = AlpacaTradingService.shared.currentAccount?.id
+                }
+            } else {
+                // Broker Mode: Create a new sub-account
+                print("📌 Using Broker Mode - creating new sub-account")
+                alpacaAccountId = try await AlpacaTradingService.shared.createAccount(
+                    email: email,
+                    firstName: firstName,
+                    lastName: lastName
+                )
+            }
+            
+            // Save the ID
+            if let id = alpacaAccountId {
+                UserDefaults.standard.set(id, forKey: "alpaca_account_id")
+            }
+            
+        } catch {
+            print("Alpaca Account Creation Failed: \(error)")
+            // Re-throw the error to stop sign up if we want to enforce account creation
+            // Or just log it. Given user requirement "users will have ability to create accounts",
+            // failure here is critical. Let's rethrow or handle specifically.
+            // For now, print is okay, but user should know.
+            // Actually, let's let the UI handle it if we rethrow, but the UI catches and shows error.
+            throw error
+        }
+        
+        // Simulate API call for local user creation
         try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second delay
 
         let user = User(
