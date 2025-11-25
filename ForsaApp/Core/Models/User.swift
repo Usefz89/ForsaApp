@@ -21,6 +21,7 @@ struct User: Identifiable, Codable {
     let followersCount: Int
     let followingCount: Int
     let isPublicProfile: Bool
+    let cashBalance: Double
     
     // Onboarding & KYC
     let hasCompletedKYC: Bool
@@ -37,7 +38,7 @@ struct User: Identifiable, Codable {
         return "\(firstInitial)\(lastInitial)"
     }
 
-    init(id: UUID = UUID(), email: String, firstName: String, lastName: String, profileImageURL: String? = nil, isVerified: Bool = false, createdAt: Date = Date(), totalPortfolioValue: Double = 0, totalGainLoss: Double = 0, totalGainLossPercentage: Double = 0, followersCount: Int = 0, followingCount: Int = 0, isPublicProfile: Bool = false, hasCompletedKYC: Bool = false, psychologicalRiskScore: Int? = nil, goals: [Goal] = []) {
+    init(id: UUID = UUID(), email: String, firstName: String, lastName: String, profileImageURL: String? = nil, isVerified: Bool = false, createdAt: Date = Date(), totalPortfolioValue: Double = 0, totalGainLoss: Double = 0, totalGainLossPercentage: Double = 0, followersCount: Int = 0, followingCount: Int = 0, isPublicProfile: Bool = false, cashBalance: Double = 0, hasCompletedKYC: Bool = false, psychologicalRiskScore: Int? = nil, goals: [Goal] = []) {
         self.id = id
         self.email = email
         self.firstName = firstName
@@ -51,6 +52,7 @@ struct User: Identifiable, Codable {
         self.followersCount = followersCount
         self.followingCount = followingCount
         self.isPublicProfile = isPublicProfile
+        self.cashBalance = cashBalance
         self.hasCompletedKYC = hasCompletedKYC
         self.psychologicalRiskScore = psychologicalRiskScore
         self.goals = goals
@@ -63,14 +65,15 @@ extension User {
         firstName: "Ahmed",
         lastName: "Al-Mansouri",
         isVerified: true,
-        totalPortfolioValue: 0,
-        totalGainLoss: 0,
-        totalGainLossPercentage: 0,
+        totalPortfolioValue: 25420.50,
+        totalGainLoss: 2840.30,
+        totalGainLossPercentage: 12.6,
         followersCount: 128,
         followingCount: 45,
         isPublicProfile: true,
-        hasCompletedKYC: false,
-        psychologicalRiskScore: nil,
+        cashBalance: 15000.0,
+        hasCompletedKYC: true,
+        psychologicalRiskScore: 65,
         goals: []
     )
 }

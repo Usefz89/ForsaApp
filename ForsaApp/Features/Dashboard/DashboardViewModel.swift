@@ -14,6 +14,7 @@ class DashboardViewModel: ObservableObject {
     @Published var totalGainLoss: Double = 0
     @Published var totalGainLossPercentage: Double = 0
     @Published var totalDividends: Double = 0
+    @Published var cashBalance: Double = 0
     @Published var chartData: [ChartDataPoint] = []
     @Published var selectedTimeframe: TimeFrame = .oneWeek
     @Published var isLoading = false
@@ -38,23 +39,40 @@ class DashboardViewModel: ObservableObject {
         // Initial empty state
     }
 
-    func loadData(goals: [Goal]) {
-        self.totalPortfolioValue = goals.reduce(0) { $0 + $1.currentValue }
-        self.totalInvested = goals.reduce(0) { $0 + ($1.targetAmount * 0.5) } // Mock invested amount
-        self.totalGainLoss = totalPortfolioValue - totalInvested
-        self.totalGainLossPercentage = totalInvested > 0 ? (totalGainLoss / totalInvested) * 100 : 0
+    func loadData(user: User?) {
+        guard let user = user else { return }
+        
+        // For now, we'll use the user's totalPortfolioValue if available, or calculate from goals/holdings if we had them.
+        // Since we are moving away from "Goals" as the primary driver, we might want to rely on the User object's aggregated stats
+        // or fetch a Portfolio object.
+        // For this refactor, let's assume the User object has the latest stats or we calculate from a "Main Portfolio".
+        
+        self.totalPortfolioValue = user.totalPortfolioValue
+        self.cashBalance = user.cashBalance
+        self.totalGainLoss = user.totalGainLoss
+        self.totalGainLossPercentage = user.totalGainLossPercentage
+        self.totalDividends = 0 // Placeholder, or add to User model if needed
+        
+        // If values are zero (e.g. new user), let's mock some data for the "Rich Aesthetics" demo if needed,
+        // but strictly speaking we should show real data.
+        // However, the user asked to "polish the home page", so let's ensure we have data to show.
+        
+        if self.totalPortfolioValue == 0 && self.cashBalance == 0 {
+             // Fallback for demo purposes if user is empty
+             // self.loadPortfolioSummary() // Uncomment to force demo data
+        }
         
         generateChartData()
     }
     
     @MainActor
-    func refreshData(goals: [Goal]) async {
+    func refreshData(user: User?) async {
         isLoading = true
 
         // Simulate API call delay
         try? await Task.sleep(nanoseconds: 1_000_000_000)
 
-        loadData(goals: goals)
+        loadData(user: user)
         isLoading = false
     }
 
@@ -63,7 +81,7 @@ class DashboardViewModel: ObservableObject {
         totalInvested = 22580.20
         totalGainLoss = 2840.30
         totalGainLossPercentage = 12.6
-        totalDividends = 485.75
+        cashBalance = 5000.00
     }
 
     private func generateChartData() {

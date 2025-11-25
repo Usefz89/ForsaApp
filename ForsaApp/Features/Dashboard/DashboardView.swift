@@ -11,7 +11,8 @@ import Charts
 struct DashboardView: View {
     @EnvironmentObject var coordinator: AppCoordinator
     @StateObject private var viewModel = DashboardViewModel()
-    @State private var showingAddGoal = false
+    @State private var showingAddFunds = false
+    @State private var showingWithdraw = false
 
     var body: some View {
         NavigationView {
@@ -20,14 +21,14 @@ struct DashboardView: View {
                     // Header with user greeting
                     headerView
 
-                    // Portfolio Summary
-                    portfolioSummaryView
+                    // Portfolio Progress Chart
+                    portfolioProgressSection
 
-                    // Performance Chart
-                    performanceChartView
-
-                    // Goals Section
-                    goalsSection
+                    // Cash Balance & Actions
+                    cashBalanceSection
+                    
+                    // Additional Info (Optional, placeholder for now)
+                    // We can add "Top Holdings" or "Market News" later if needed
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 100) // Account for tab bar
@@ -35,19 +36,11 @@ struct DashboardView: View {
             .background(Color.backgroundPrimary)
             .navigationBarHidden(true)
             .refreshable {
-                await viewModel.refreshData(goals: coordinator.currentUser?.goals ?? [])
-            }
-            .sheet(isPresented: $showingAddGoal) {
-                if let riskScore = coordinator.currentUser?.psychologicalRiskScore {
-                    GoalCreationView(riskScore: riskScore) { newGoal in
-                        coordinator.completeOnboarding(riskScore: riskScore, goal: newGoal) // Re-using this to append goal
-                        showingAddGoal = false
-                    }
-                }
+                await viewModel.refreshData(user: coordinator.currentUser)
             }
         }
         .onAppear {
-            viewModel.loadData(goals: coordinator.currentUser?.goals ?? [])
+            viewModel.loadData(user: coordinator.currentUser)
         }
     }
 
@@ -88,129 +81,210 @@ struct DashboardView: View {
         .padding(.top, 10)
     }
 
-    private var portfolioSummaryView: some View {
-        ForsaCard {
-            VStack(spacing: 16) {
-                // Total Value
-                VStack(spacing: 8) {
-                    Text("Total Portfolio Value")
-                        .font(.callout)
-                        .foregroundColor(.textSecondary)
-
-                    Text("$\(String(format: "%.2f", viewModel.totalPortfolioValue))")
-                        .font(.priceXLarge)
-                        .fontWeight(.bold)
-                        .foregroundColor(.textPrimary)
-
-                    HStack(spacing: 4) {
-                        Image(systemName: viewModel.isPortfolioPositive ? "arrow.up.right" : "arrow.down.right")
-                            .font(.caption1)
-                            .foregroundColor(viewModel.isPortfolioPositive ? .gainGreen : .lossRed)
-
-                        Text(viewModel.portfolioChangeText)
-                            .font(.callout)
-                            .fontWeight(.medium)
-                            .foregroundColor(viewModel.isPortfolioPositive ? .gainGreen : .lossRed)
-
-                        Text("today")
-                            .font(.callout)
-                            .foregroundColor(.textTertiary)
-                    }
-                }
-            }
-        }
-        .buttonStyle(PlainButtonStyle())
-    }
-
-    private var performanceChartView: some View {
-        ForsaCard {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack {
-                    Text("Portfolio Growth")
-                        .font(.headline)
-                        .foregroundColor(.textPrimary)
-
-                    Spacer()
-                }
-
-                // Chart
-                Chart(viewModel.chartData) { data in
-                    LineMark(
-                        x: .value("Date", data.date),
-                        y: .value("Value", data.value)
-                    )
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [.primaryPurple, .primaryPurpleDark],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                    .lineStyle(StrokeStyle(lineWidth: 2))
-
-                    AreaMark(
-                        x: .value("Date", data.date),
-                        y: .value("Value", data.value)
-                    )
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [.primaryPurple.opacity(0.3), .clear],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-                }
-                .frame(height: 150)
-                .chartYAxis(.hidden)
-                .chartXAxis(.hidden)
-            }
-        }
-    }
-
-    private var goalsSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
+    private var portfolioProgressSection: some View {
+        VStack(spacing: 16) {
             HStack {
-                Text("Your Goals")
+                Text("Portfolio Performance")
                     .font(.headline)
                     .foregroundColor(.textPrimary)
-                
                 Spacer()
-                
-                Button(action: { showingAddGoal = true }) {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.title2)
-                        .foregroundColor(.primaryPurple)
-                }
             }
             
-            if let goals = coordinator.currentUser?.goals, !goals.isEmpty {
-                ForEach(goals) { goal in
-                    NavigationLink(destination: GoalDetailView(goal: goal)) {
-                        GoalCard(goal: goal)
-                    }
-                }
-            } else {
-                Button(action: { showingAddGoal = true }) {
-                    VStack(spacing: 12) {
-                        Image(systemName: "target")
-                            .font(.largeTitle)
-                            .foregroundColor(.textSecondary)
-                        Text("Create your first goal")
+            ForsaCard {
+                VStack(alignment: .leading, spacing: 20) {
+                    // Value and Change
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Total Portfolio Value")
                             .font(.callout)
                             .foregroundColor(.textSecondary)
+                        
+                        Text("$\(String(format: "%.2f", viewModel.totalPortfolioValue))")
+                            .font(.system(size: 32, weight: .bold, design: .rounded))
+                            .foregroundColor(.textPrimary)
+                        
+                        HStack(spacing: 6) {
+                            Image(systemName: viewModel.isPortfolioPositive ? "arrow.up.right" : "arrow.down.right")
+                                .font(.caption1)
+                                .fontWeight(.bold)
+                                .foregroundColor(viewModel.isPortfolioPositive ? .gainGreen : .lossRed)
+                            
+                            Text(viewModel.portfolioChangeText)
+                                .font(.callout)
+                                .fontWeight(.medium)
+                                .foregroundColor(viewModel.isPortfolioPositive ? .gainGreen : .lossRed)
+                            
+                            Text("All time")
+                                .font(.caption1)
+                                .foregroundColor(.textTertiary)
+                        }
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 32)
-                    .background(Color.backgroundCard)
-                    .cornerRadius(12)
+                    
+                    // Detailed Stats Stack
+                    HStack(spacing: 0) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Invested")
+                                .font(.caption1)
+                                .foregroundColor(.textSecondary)
+                            Text("$\(String(format: "%.2f", viewModel.totalInvested))")
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.textPrimary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Gain/Loss")
+                                .font(.caption1)
+                                .foregroundColor(.textSecondary)
+                            Text(viewModel.totalGainLossText)
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                                .foregroundColor(viewModel.isPortfolioPositive ? .gainGreen : .lossRed)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Dividends")
+                                .font(.caption1)
+                                .foregroundColor(.textSecondary)
+                            Text("$\(String(format: "%.2f", viewModel.totalDividends))")
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.textPrimary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .padding(.top, 8)
+                    
+                    // Chart
+                    Chart(viewModel.chartData) { data in
+                        LineMark(
+                            x: .value("Date", data.date),
+                            y: .value("Value", data.value)
+                        )
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [.primaryPurple, .primaryPurpleDark],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .lineStyle(StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+                        .interpolationMethod(.catmullRom)
+
+                        AreaMark(
+                            x: .value("Date", data.date),
+                            y: .value("Value", data.value)
+                        )
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [.primaryPurple.opacity(0.2), .clear],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .interpolationMethod(.catmullRom)
+                    }
+                    .frame(height: 200)
+                    .chartYAxis(.hidden)
+                    .chartXAxis(.hidden)
+                    
+                    // Timeframe Selector
+                    HStack {
+                        ForEach(TimeFrame.allCases, id: \.self) { timeframe in
+                            Button(action: {
+                                withAnimation {
+                                    viewModel.selectedTimeframe = timeframe
+                                    // In a real app, this would trigger a data reload for the timeframe
+                                }
+                            }) {
+                                Text(timeframe.displayName)
+                                    .font(.caption1)
+                                    .fontWeight(.medium)
+                                    .padding(.vertical, 6)
+                                    .padding(.horizontal, 12)
+                                    .background(viewModel.selectedTimeframe == timeframe ? Color.primaryPurple.opacity(0.1) : Color.clear)
+                                    .foregroundColor(viewModel.selectedTimeframe == timeframe ? .primaryPurple : .textSecondary)
+                                    .cornerRadius(8)
+                            }
+                            if timeframe != TimeFrame.allCases.last {
+                                Spacer()
+                            }
+                        }
+                    }
+                }
+                .padding(4)
+            }
+        }
+    }
+
+    private var cashBalanceSection: some View {
+        VStack(spacing: 16) {
+            HStack {
+                Text("Cash & Actions")
+                    .font(.headline)
+                    .foregroundColor(.textPrimary)
+                Spacer()
+            }
+            
+            ForsaCard {
+                VStack(spacing: 20) {
+                    NavigationLink(destination: CashReserveView()) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Available Cash")
+                                    .font(.callout)
+                                    .foregroundColor(.textSecondary)
+                                Text("$\(String(format: "%.2f", viewModel.cashBalance))")
+                                    .font(.title2)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(.textPrimary)
+                            }
+                            Spacer()
+                            
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundColor(.textTertiary)
+                        }
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    
+                    Divider()
+                        .background(Color.borderLight)
+                    
+                    HStack(spacing: 16) {
+                        Button(action: { showingAddFunds = true }) {
+                            HStack {
+                                Image(systemName: "plus")
+                                Text("Add Funds")
+                            }
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color.primaryPurple)
+                            .cornerRadius(10)
+                        }
+                        
+                        Button(action: { showingWithdraw = true }) {
+                            HStack {
+                                Image(systemName: "arrow.down")
+                                Text("Withdraw")
+                            }
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.primaryPurple)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color.primaryPurple.opacity(0.1))
+                            .cornerRadius(10)
+                        }
+                    }
                 }
             }
         }
     }
-    
-    // Removing old Auto-Invest and Composition cards
-    private var autoInvestCard: some View { EmptyView() }
-    private var compositionCard: some View { EmptyView() }
 }
 
 // MARK: - Preview
