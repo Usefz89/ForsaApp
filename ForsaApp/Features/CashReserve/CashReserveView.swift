@@ -846,12 +846,32 @@ struct DepositFlowView: View {
             if autoInvestEnabled && coordinator.selectedPortfolio != nil {
                 isInvesting = true
                 
-                // Wait briefly for funds to settle in sandbox
-                try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+                // Wait for funds to settle in sandbox (ACH transfers need time)
+                print("⏳ Waiting for funds to settle...")
+                try await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
                 
-                if let result = try await coordinator.investInPortfolio(amount: amountUSD) {
-                    investmentResult = result
-                    showInvestmentResult = true
+                // Verify funds are actually available before investing
+                let account = try await AlpacaTradingService.shared.fetchAccountDetails(accountId: accountId)
+                let availableCash = account.cashValue
+                
+                print("💰 Available cash after deposit: $\(availableCash)")
+                
+                if availableCash >= 1.0 {
+                    // Funds are available, proceed with investment
+                    let investAmount = min(amountUSD, availableCash) // Invest available amount
+                    
+                    if let result = try await coordinator.investInPortfolio(amount: investAmount) {
+                        investmentResult = result
+                        showInvestmentResult = true
+                    }
+                } else {
+                    // Funds not yet available - show pending message
+                    print("⚠️ Funds not yet available. Transfer may be pending.")
+                    await MainActor.run {
+                        isInvesting = false
+                        // Show success for deposit, but note funds are pending
+                        showSuccess = true
+                    }
                 }
                 
                 isInvesting = false

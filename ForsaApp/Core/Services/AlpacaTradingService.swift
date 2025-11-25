@@ -192,10 +192,39 @@ class AlpacaTradingService: ObservableObject {
         if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
            let relationshipId = json["id"] as? String {
             print("✅ ACH Relationship Created: \(relationshipId)")
+            
+            // SANDBOX: Approve the ACH relationship so transfers can complete
+            await approveACHRelationship(accountId: accountId, relationshipId: relationshipId)
+            
             return relationshipId
         }
         
         throw URLError(.badServerResponse)
+    }
+    
+    /// SANDBOX ONLY: Approves an ACH relationship so transfers can be processed
+    private func approveACHRelationship(accountId: String, relationshipId: String) async {
+        print("🔄 Approving ACH relationship in sandbox...")
+        
+        // Sandbox endpoint to approve ACH relationship
+        let url = URL(string: "\(brokerBaseURL)/sandbox/accounts/\(accountId)/ach_relationships/\(relationshipId)/approve")!
+        
+        do {
+            var request = try createBrokerRequest(url: url, method: "POST")
+            request.httpBody = "{}".data(using: .utf8)
+            
+            let (data, response) = try await URLSession.shared.data(for: request)
+            
+            if let httpResponse = response as? HTTPURLResponse {
+                if (200...299).contains(httpResponse.statusCode) {
+                    print("✅ ACH relationship approved")
+                } else if let responseString = String(data: data, encoding: .utf8) {
+                    print("⚠️ ACH approval response (\(httpResponse.statusCode)): \(responseString)")
+                }
+            }
+        } catch {
+            print("⚠️ ACH approval failed: \(error)")
+        }
     }
     
     /// Gets existing ACH relationships
@@ -213,6 +242,7 @@ class AlpacaTradingService: ObservableObject {
     }
     
     /// Funds the account via ACH Transfer (Sandbox)
+    /// In sandbox mode, we also simulate instant completion of the transfer
     func fundAccount(accountId: String, amount: Double) async throws {
         print("💰 Funding account \(accountId) with $\(amount)")
         
@@ -226,6 +256,13 @@ class AlpacaTradingService: ObservableObject {
            let id = firstRelationship["id"] as? String {
             relationshipId = id
             print("📌 Using existing ACH relationship: \(id)")
+            
+            // SANDBOX: Check if relationship needs approval
+            let status = firstRelationship["status"] as? String ?? ""
+            if status == "QUEUED" || status == "PENDING" {
+                print("⚠️ ACH relationship is \(status), approving...")
+                await approveACHRelationship(accountId: accountId, relationshipId: id)
+            }
         } else {
             // Create a new ACH relationship for sandbox
             relationshipId = try await createSandboxACHRelationship(accountId: accountId)
@@ -236,8 +273,8 @@ class AlpacaTradingService: ObservableObject {
         }
         
         // Create transfer
-        let url = URL(string: "\(brokerBaseURL)/accounts/\(accountId)/transfers")!
-        var request = try createBrokerRequest(url: url, method: "POST")
+        let transferUrl = URL(string: "\(brokerBaseURL)/accounts/\(accountId)/transfers")!
+        var transferRequest = try createBrokerRequest(url: transferUrl, method: "POST")
         
         let body: [String: Any] = [
             "transfer_type": "ach",
@@ -246,18 +283,94 @@ class AlpacaTradingService: ObservableObject {
             "direction": "INCOMING"
         ]
         
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (data, response) = try await URLSession.shared.data(for: request)
+        transferRequest.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await URLSession.shared.data(for: transferRequest)
         
         if let responseString = String(data: data, encoding: .utf8) {
             print("📥 Transfer Response: \(responseString)")
         }
         
         try validateResponse(response, data: data)
+        
+        // Parse transfer ID from response
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let transferId = json["id"] as? String {
+            print("✅ Transfer created with ID: \(transferId)")
+            
+            // SANDBOX ONLY: Simulate instant completion of the transfer
+            // This uses the Alpaca sandbox simulation endpoint
+            await simulateTransferComplete(accountId: accountId, transferId: transferId)
+        }
+        
         print("✅ Funding transfer initiated successfully!")
         
-        // Refresh account
+        // Wait a brief moment for the transfer to be processed
+        try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+        
+        // Refresh account to get updated balance
         _ = try? await fetchAccountDetails(accountId: accountId)
+    }
+    
+    /// SANDBOX ONLY: Simulates instant completion of an ACH transfer
+    /// This endpoint only works in Alpaca's sandbox environment
+    private func simulateTransferComplete(accountId: String, transferId: String) async {
+        print("🔄 Simulating transfer completion for sandbox...")
+        
+        // Method 1: Try PATCH on specific transfer to mark as complete
+        let patchUrl = URL(string: "\(brokerBaseURL)/sandbox/accounts/\(accountId)/transfers/\(transferId)")!
+        
+        do {
+            var request = try createBrokerRequest(url: patchUrl, method: "PATCH")
+            
+            let body: [String: Any] = [
+                "status": "COMPLETE"
+            ]
+            
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+            let (data, response) = try await URLSession.shared.data(for: request)
+            
+            if let httpResponse = response as? HTTPURLResponse {
+                if (200...299).contains(httpResponse.statusCode) {
+                    print("✅ Transfer marked as COMPLETE")
+                    // Wait for processing
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                    return
+                } else if let responseString = String(data: data, encoding: .utf8) {
+                    print("⚠️ PATCH transfer response (\(httpResponse.statusCode)): \(responseString)")
+                }
+            }
+        } catch {
+            print("⚠️ PATCH transfer failed: \(error)")
+        }
+        
+        // Method 2: Try POST to sandbox transfers endpoint
+        let postUrl = URL(string: "\(brokerBaseURL)/sandbox/accounts/\(accountId)/transfers")!
+        
+        do {
+            var request = try createBrokerRequest(url: postUrl, method: "POST")
+            
+            let body: [String: Any] = [
+                "transfer_id": transferId,
+                "status": "COMPLETE"
+            ]
+            
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+            let (data, response) = try await URLSession.shared.data(for: request)
+            
+            if let httpResponse = response as? HTTPURLResponse {
+                if (200...299).contains(httpResponse.statusCode) {
+                    print("✅ Transfer simulation successful via POST")
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                    return
+                } else if let responseString = String(data: data, encoding: .utf8) {
+                    print("⚠️ POST transfer response (\(httpResponse.statusCode)): \(responseString)")
+                }
+            }
+        } catch {
+            print("⚠️ POST transfer simulation failed: \(error)")
+        }
+        
+        print("ℹ️ Transfer simulation methods exhausted. Transfer may need manual approval or time to process.")
     }
     
     /// Withdraws funds from the account via ACH Transfer (Sandbox)

@@ -76,24 +76,24 @@ struct PortfolioDetailView: View {
     
     private var portfolioHeader: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack {
+                        HStack {
                 // Portfolio Icon
-                ZStack {
-                    Circle()
+                            ZStack {
+                                Circle()
                         .fill(risk.color.opacity(0.15))
                         .frame(width: 56, height: 56)
-                    
+                                
                     Image(systemName: risk.icon)
-                        .font(.title2)
+                                    .font(.title2)
                         .foregroundColor(risk.color)
-                }
-                
+                            }
+                            
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(risk.title)
-                        .font(.title2)
-                        .fontWeight(.bold)
-                        .foregroundColor(.textPrimary)
-                    
+                                Text(risk.title)
+                                    .font(.title2)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(.textPrimary)
+                                
                     // Risk Level Indicator
                     HStack(spacing: 4) {
                         ForEach(0..<4) { index in
@@ -103,27 +103,27 @@ struct PortfolioDetailView: View {
                         }
                         Text("Risk Level \(risk.riskScore)/4")
                             .font(.caption2)
-                            .foregroundColor(.textSecondary)
+                                        .foregroundColor(.textSecondary)
                             .padding(.leading, 4)
-                    }
-                }
+                                }
+                            }
                 
-                Spacer()
-                
-                Button(action: { presentationMode.wrappedValue.dismiss() }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.title2)
-                        .foregroundColor(.textTertiary)
-                }
-            }
-            
+                            Spacer()
+                            
+                            Button(action: { presentationMode.wrappedValue.dismiss() }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.title2)
+                                    .foregroundColor(.textTertiary)
+                            }
+                        }
+                        
             // Description
             Text(risk.detailedDescription)
-                .font(.subheadline)
-                .foregroundColor(.textSecondary)
+                            .font(.subheadline)
+                            .foregroundColor(.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding()
+                            }
+                            .padding()
         .background(Color.backgroundCard)
         .cornerRadius(16)
     }
@@ -133,8 +133,8 @@ struct PortfolioDetailView: View {
     private var keyStatisticsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Key Statistics")
-                .font(.headline)
-                .foregroundColor(.textPrimary)
+                            .font(.headline)
+                            .foregroundColor(.textPrimary)
             
             LazyVGrid(columns: [
                 GridItem(.flexible()),
@@ -183,28 +183,28 @@ struct PortfolioDetailView: View {
                 )
             }
         }
-    }
-    
+                    }
+                    
     // MARK: - Allocation Chart
     
     private var allocationChartSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Asset Allocation")
-                .font(.headline)
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("Asset Allocation")
+                            .font(.headline)
                 .foregroundColor(.textPrimary)
-            
+                        
             ForsaCard {
                 VStack(spacing: 20) {
                     // Donut Chart
-                    ZStack {
-                        Chart(risk.allocations) { allocation in
-                            SectorMark(
-                                angle: .value("Percentage", allocation.percentage),
+                        ZStack {
+                            Chart(risk.allocations) { allocation in
+                                SectorMark(
+                                    angle: .value("Percentage", allocation.percentage),
                                 innerRadius: .ratio(0.6),
-                                angularInset: 2
-                            )
+                                    angularInset: 2
+                                )
                             .foregroundStyle(allocation.assetClass.color)
-                        }
+                            }
                         .frame(height: 200)
                         
                         // Center text showing dominant asset class
@@ -246,30 +246,30 @@ struct PortfolioDetailView: View {
                 }
             }
         }
-    }
-    
+                    }
+                    
     // MARK: - Fund Distribution
     
     private var fundDistributionSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 16) {
             Text("Fund Distribution")
-                .font(.headline)
+                            .font(.headline)
                 .foregroundColor(.textPrimary)
             
             VStack(spacing: 12) {
                 ForEach(risk.allocations.sorted { $0.percentage > $1.percentage }) { allocation in
                     FundDetailRow(allocation: allocation)
-                }
-            }
-        }
-    }
-    
+                                }
+                            }
+                        }
+                    }
+                    
     // MARK: - Suitability
     
     private var suitabilitySection: some View {
-        VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 16) {
             Text("Best Suited For")
-                .font(.headline)
+                            .font(.headline)
                 .foregroundColor(.textPrimary)
             
             ForsaCard {
@@ -294,18 +294,18 @@ struct PortfolioDetailView: View {
     
     private var selectPortfolioButton: some View {
         VStack(spacing: 12) {
-            Button(action: {
+                    Button(action: {
                 coordinator.updateSelectedPortfolio(risk)
                 presentationMode.wrappedValue.dismiss()
-            }) {
+                    }) {
                 Text("Select This Portfolio")
-                    .font(.headline)
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
                     .background(risk.color)
-                    .cornerRadius(12)
-            }
+                            .cornerRadius(12)
+                    }
             
             if viewModel.accountCash > 0 {
                 Button(action: {
@@ -317,7 +317,7 @@ struct PortfolioDetailView: View {
                         .foregroundColor(risk.color)
                 }
             }
-        }
+                }
         .padding(.top, 8)
     }
 }
@@ -409,8 +409,8 @@ struct FundDetailRow: View {
         .background(Color.backgroundCard)
         .cornerRadius(12)
         .shadow(color: Color.shadowLight, radius: 2, x: 0, y: 1)
-    }
-}
+            }
+        }
 
 // MARK: - Invest Sheet
 
@@ -498,4 +498,4 @@ struct InvestSheet: View {
 #Preview {
     PortfolioDetailView(risk: .moderate)
         .environmentObject(AppCoordinator())
-}
+    }

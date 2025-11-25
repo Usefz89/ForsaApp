@@ -201,7 +201,7 @@ extension RiskLevel {
 
     // MARK: - Portfolio Allocations
     // Based on Modern Portfolio Theory adapted for Sharia-compliant investing
-    
+
     var allocations: [AssetAllocation] {
         switch self {
         case .conservative:
