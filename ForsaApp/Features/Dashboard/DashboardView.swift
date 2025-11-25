@@ -52,7 +52,15 @@ struct DashboardView: View {
             }
         }
         .onAppear {
-            Task { await viewModel.checkAccountStatus() }
+            Task {
+                await viewModel.checkAccountStatus()
+                // Check for uninvested cash and auto-invest if available
+                let didInvest = await coordinator.checkAndAutoInvestAvailableCash()
+                if didInvest {
+                    // Refresh data to show new positions
+                    await viewModel.refreshData()
+                }
+            }
         }
         .overlay(investingOverlay)
     }
@@ -88,6 +96,12 @@ struct DashboardView: View {
         }
         .refreshable {
             await viewModel.refreshData()
+            // Check for uninvested cash and auto-invest after refresh
+            let didInvest = await coordinator.checkAndAutoInvestAvailableCash()
+            if didInvest {
+                // Refresh again to show new positions
+                await viewModel.refreshData()
+            }
         }
     }
     

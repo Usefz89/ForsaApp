@@ -446,6 +446,62 @@ class AppCoordinator: ObservableObject {
         }
     }
     
+    /// Check for uninvested cash and auto-invest if conditions are met
+    /// Called on app refresh/launch to catch approved transfers
+    @discardableResult
+    func checkAndAutoInvestAvailableCash() async -> Bool {
+        // Skip for demo accounts
+        guard let user = currentUser, !user.isDemoAccount else {
+            print("⏭️ Auto-invest skipped: Demo account")
+            return false
+        }
+        
+        guard let accountId = alpacaAccountId else {
+            print("⏭️ Auto-invest skipped: No account ID")
+            return false
+        }
+        
+        guard let portfolio = selectedPortfolio else {
+            print("⏭️ Auto-invest skipped: No portfolio selected")
+            return false
+        }
+        
+        // Don't auto-invest if already investing
+        guard !isInvestingPortfolio else {
+            print("⏭️ Auto-invest skipped: Investment already in progress")
+            return false
+        }
+        
+        do {
+            // Fetch current account details
+            let account = try await AlpacaTradingService.shared.fetchAccountDetails(accountId: accountId)
+            let availableCash = account.cashValue
+            
+            // Minimum amount to trigger auto-invest ($1)
+            let minimumInvestAmount: Double = 1.0
+            
+            guard availableCash >= minimumInvestAmount else {
+                print("⏭️ Auto-invest skipped: Insufficient cash ($\(String(format: "%.2f", availableCash)))")
+                return false
+            }
+            
+            print("💰 Found $\(String(format: "%.2f", availableCash)) available cash - Auto-investing into \(portfolio.title)")
+            
+            // Perform the investment
+            let result = try await investInPortfolio(amount: availableCash)
+            
+            if let result = result {
+                print("✅ Auto-investment complete: \(result.successCount) orders successful, $\(String(format: "%.2f", result.totalInvested)) invested")
+                return result.successCount > 0
+            }
+            
+            return false
+        } catch {
+            print("❌ Auto-invest check failed: \(error.localizedDescription)")
+            return false
+        }
+    }
+    
     /// Updates the user's selected portfolio
     func updateSelectedPortfolio(_ portfolio: RiskLevel) {
         print("📊 Updating selected portfolio to: \(portfolio.title)")

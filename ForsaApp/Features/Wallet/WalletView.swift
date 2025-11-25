@@ -43,6 +43,13 @@ struct WalletView: View {
         }
         .onAppear {
             viewModel.loadData()
+            // Check for uninvested cash and auto-invest if available
+            Task {
+                let didInvest = await coordinator.checkAndAutoInvestAvailableCash()
+                if didInvest {
+                    viewModel.loadData() // Refresh to show updated balance
+                }
+            }
         }
     }
     
@@ -107,6 +114,11 @@ struct WalletView: View {
         }
         .refreshable {
             await viewModel.refreshData()
+            // Check for uninvested cash and auto-invest after refresh
+            let didInvest = await coordinator.checkAndAutoInvestAvailableCash()
+            if didInvest {
+                await viewModel.refreshData() // Refresh to show updated balance
+            }
         }
     }
     
