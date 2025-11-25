@@ -398,6 +398,57 @@ class AppCoordinator: ObservableObject {
             print("❌ Auto-investment failed: \(error)")
         }
     }
+    
+    /// Updates the user's selected portfolio
+    func updateSelectedPortfolio(_ portfolio: RiskLevel) {
+        print("📊 Updating selected portfolio to: \(portfolio.title)")
+        
+        // Save to UserDefaults
+        UserDefaults.standard.set(portfolio.rawValue, forKey: StorageKeys.selectedPortfolio)
+        UserDefaults.standard.synchronize()
+        
+        // Update user's goal if exists
+        if var user = currentUser, !user.goals.isEmpty {
+            var updatedGoals = user.goals
+            // Update the first goal's portfolio (main investment goal)
+            if var firstGoal = updatedGoals.first {
+                firstGoal = Goal(
+                    id: firstGoal.id,
+                    name: firstGoal.name,
+                    targetAmount: firstGoal.targetAmount,
+                    currentValue: firstGoal.currentValue,
+                    targetDate: firstGoal.targetDate,
+                    assignedPortfolio: portfolio
+                )
+                updatedGoals[0] = firstGoal
+            }
+            
+            user = User(
+                id: user.id,
+                email: user.email,
+                firstName: user.firstName,
+                lastName: user.lastName,
+                profileImageURL: user.profileImageURL,
+                isVerified: user.isVerified,
+                createdAt: user.createdAt,
+                totalPortfolioValue: user.totalPortfolioValue,
+                totalGainLoss: user.totalGainLoss,
+                totalGainLossPercentage: user.totalGainLossPercentage,
+                followersCount: user.followersCount,
+                followingCount: user.followingCount,
+                isPublicProfile: user.isPublicProfile,
+                cashBalance: user.cashBalance,
+                hasCompletedKYC: user.hasCompletedKYC,
+                psychologicalRiskScore: user.psychologicalRiskScore,
+                goals: updatedGoals
+            )
+            
+            updateSavedUser(user)
+            currentUser = user
+        }
+        
+        print("✅ Portfolio updated to \(portfolio.title)")
+    }
 }
 
 struct AppCoordinatorView: View {

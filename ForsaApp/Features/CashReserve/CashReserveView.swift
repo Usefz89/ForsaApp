@@ -825,6 +825,7 @@ struct DepositFlowView: View {
         case .gold: return .warningYellow
         case .reit: return .primaryPurple
         case .international: return .primaryOrange
+        case .emergingMarkets: return .errorRed
         }
     }
     

@@ -105,55 +105,64 @@ struct PortfolioSelectionCard: View {
             Button(action: action) {
                 HStack(alignment: .center, spacing: 16) {
                     // Radio Button
-                    Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
-                        .font(.title2)
-                        .foregroundColor(isSelected ? .primaryPurple : .textTertiary)
+                    ZStack {
+                        Circle()
+                            .stroke(isSelected ? risk.color : Color.borderPrimary, lineWidth: 2)
+                            .frame(width: 24, height: 24)
+                        
+                        if isSelected {
+                            Circle()
+                                .fill(risk.color)
+                                .frame(width: 14, height: 14)
+                        }
+                    }
                     
                     // Icon
                     ZStack {
                         Circle()
-                            .fill(Color.backgroundSecondary)
+                            .fill(risk.color.opacity(0.15))
                             .frame(width: 48, height: 48)
                         
-                        Image(systemName: iconName(for: risk))
+                        Image(systemName: risk.icon)
                             .font(.system(size: 20))
-                            .foregroundColor(.primaryPurple)
+                            .foregroundColor(risk.color)
                     }
                     
                     // Content
                     VStack(alignment: .leading, spacing: 8) {
-                        Text(risk.title)
-                            .font(.headline)
-                            .foregroundColor(.textPrimary)
+                        HStack {
+                            Text(risk.title)
+                                .font(.headline)
+                                .foregroundColor(.textPrimary)
+                            
+                            if isRecommended {
+                                Text("★")
+                                    .font(.caption)
+                                    .foregroundColor(.warningYellow)
+                            }
+                        }
                         
                         HStack {
-                            Text("Risk level:")
+                            Text("Risk:")
                                 .font(.caption)
                                 .foregroundColor(.textSecondary)
                             
-                            // Risk Meter
+                            // Risk Meter using riskScore
                             HStack(spacing: 2) {
                                 ForEach(0..<4) { index in
                                     RoundedRectangle(cornerRadius: 2)
-                                        .fill(colorForRiskMeter(index: index))
-                                        .frame(width: 20, height: 4)
+                                        .fill(index < risk.riskScore ? risk.color : Color.gray.opacity(0.3))
+                                        .frame(width: 16, height: 4)
                                 }
                             }
                         }
                         
-                        Text("Average Return: \(averageReturnRange(for: risk))")
+                        Text("Expected Return: \(risk.averageReturn)")
                             .font(.caption)
-                            .foregroundColor(.textSecondary)
+                            .foregroundColor(.primaryGreen)
                     }
                     
                     Spacer()
-                    
-                    if isRecommended {
-                        // Maybe a small star badge?
-                        Image(systemName: "star.fill")
-                            .foregroundColor(.warningYellow)
-                            .font(.caption)
-                    }
                 }
                 .padding()
             }
@@ -163,54 +172,28 @@ struct PortfolioSelectionCard: View {
                 .padding(.horizontal)
             
             Button(action: { showDetails = true }) {
-                Text("View Details")
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                    .foregroundColor(.primaryGreen) // Changed to Green/Teal as requested or keeping theme
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
+                HStack {
+                    Text("View Details")
+                    Image(systemName: "chevron.right")
+                        .font(.caption2)
+                }
+                .font(.subheadline)
+                .fontWeight(.medium)
+                .foregroundColor(risk.color)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
             }
         }
-        .background(Color.white)
+        .background(Color.backgroundCard)
         .cornerRadius(12)
         .overlay(
             RoundedRectangle(cornerRadius: 12)
-                .stroke(isSelected ? Color.primaryPurple : Color.borderPrimary, lineWidth: isSelected ? 2 : 1)
+                .stroke(isSelected ? risk.color : Color.borderPrimary, lineWidth: isSelected ? 2 : 1)
         )
         .shadow(color: Color.shadowLight, radius: 2, x: 0, y: 1)
         .sheet(isPresented: $showDetails) {
             PortfolioDetailView(risk: risk)
         }
-    }
-    
-    private func iconName(for risk: RiskLevel) -> String {
-        switch risk {
-        case .conservative: return "shield.fill"
-        case .moderate: return "scale.3d"
-        case .growth: return "chart.xyaxis.line"
-        case .aggressive: return "flame.fill"
-        }
-    }
-    
-    private func averageReturnRange(for risk: RiskLevel) -> String {
-        switch risk {
-        case .conservative: return "4% - 6%"
-        case .moderate: return "6% - 8%"
-        case .growth: return "8% - 10%"
-        case .aggressive: return "10% - 12%"
-        }
-    }
-    
-    private func colorForRiskMeter(index: Int) -> Color {
-        let riskIndex: Int
-        switch risk {
-        case .conservative: riskIndex = 0
-        case .moderate: riskIndex = 1
-        case .growth: riskIndex = 2
-        case .aggressive: riskIndex = 3
-        }
-        
-        return index <= riskIndex ? Color.primaryGreen : Color.gray.opacity(0.3)
     }
 }
 
@@ -223,19 +206,19 @@ struct RecommendedPortfolioCard: View {
             HStack {
                 Image(systemName: "star.fill")
                     .foregroundColor(.warningYellow)
-                Text("Recommended Portfolio")
+                Text("Recommended for You")
                     .font(.subheadline)
                     .fontWeight(.medium)
                     .foregroundColor(.white)
             }
             
-            HStack(alignment: .top) {
+            HStack(alignment: .top, spacing: 12) {
                 ZStack {
                     Circle()
                         .fill(Color.white.opacity(0.2))
-                        .frame(width: 48, height: 48)
+                        .frame(width: 52, height: 52)
                     
-                    Image(systemName: "chart.pie.fill")
+                    Image(systemName: risk.icon)
                         .foregroundColor(.white)
                         .font(.title2)
                 }
@@ -246,28 +229,55 @@ struct RecommendedPortfolioCard: View {
                         .fontWeight(.bold)
                         .foregroundColor(.white)
                     
-                    Text("Based on the answers that you have brought, we advise you to invest in \(risk.title) portfolio")
+                    Text(risk.description)
                         .font(.caption)
                         .foregroundColor(.white.opacity(0.9))
                         .fixedSize(horizontal: false, vertical: true)
+                    
+                    // Stats row
+                    HStack(spacing: 16) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Expected Return")
+                                .font(.system(size: 9))
+                                .foregroundColor(.white.opacity(0.7))
+                            Text(risk.averageReturn)
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.white)
+                        }
+                        
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Time Horizon")
+                                .font(.system(size: 9))
+                                .foregroundColor(.white.opacity(0.7))
+                            Text(risk.timeHorizon)
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.white)
+                        }
+                    }
+                    .padding(.top, 4)
                 }
-                .padding(.leading, 8)
             }
             
             Button(action: action) {
-                Text("View Details")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.primaryPurple)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .background(Color.white)
-                    .cornerRadius(8)
+                HStack {
+                    Text("View Details")
+                    Image(systemName: "arrow.right")
+                        .font(.caption)
+                }
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundColor(risk.color)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(Color.white)
+                .cornerRadius(10)
             }
-            .padding(.top, 8)
+            .padding(.top, 4)
         }
         .padding()
-        .background(Color.primaryPurple) // Using our main brand color
+        .background(risk.color)
         .cornerRadius(16)
     }
 }

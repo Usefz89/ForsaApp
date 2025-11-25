@@ -10,6 +10,7 @@ import Charts
 
 struct PortfolioDetailView: View {
     let risk: RiskLevel
+    @EnvironmentObject var coordinator: AppCoordinator
     @StateObject private var viewModel = PortfolioDetailViewModel()
     @State private var showingInvestSheet = false
     @Environment(\.presentationMode) var presentationMode
@@ -18,6 +19,7 @@ struct PortfolioDetailView: View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 24) {
+                    // Messages
                     if let success = viewModel.successMessage {
                         Text(success)
                             .font(.caption)
@@ -37,264 +39,27 @@ struct PortfolioDetailView: View {
                     }
                     
                     // Header
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            ZStack {
-                                Circle()
-                                    .fill(Color.backgroundSecondary)
-                                    .frame(width: 48, height: 48)
-                                
-                                Image(systemName: "chart.pie.fill") // Placeholder icon
-                                    .font(.title2)
-                                    .foregroundColor(.primaryPurple)
-                            }
-                            
-                            VStack(alignment: .leading) {
-                                Text(risk.title)
-                                    .font(.title2)
-                                    .fontWeight(.bold)
-                                    .foregroundColor(.textPrimary)
-                                
-                                HStack {
-                                    Text("Risk level:")
-                                        .font(.caption)
-                                        .foregroundColor(.textSecondary)
-                                    // Simple meter
-                                    Capsule()
-                                        .fill(Color.primaryGreen)
-                                        .frame(width: 60, height: 6)
-                                }
-                            }
-                            Spacer()
-                            
-                            Button(action: { presentationMode.wrappedValue.dismiss() }) {
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(.title2)
-                                    .foregroundColor(.textTertiary)
-                            }
-                        }
-                        
-                        Text(risk.description)
-                            .font(.subheadline)
-                            .foregroundColor(.textSecondary)
-                            .padding(.top, 8)
-                            .lineLimit(nil)
-                        
-                        // Stats Rows
-                        VStack(spacing: 12) {
-                            HStack {
-                                Text("Average Return : \(risk.averageReturn)")
-                                    .font(.subheadline)
-                                    .fontWeight(.medium)
-                                    .foregroundColor(.textPrimary)
-                                Spacer()
-                            }
-                            .padding()
-                            .background(Color.backgroundSecondary)
-                            .cornerRadius(8)
-                            
-                            HStack {
-                                Text("Average Standard Deviation : \(risk.standardDeviation)")
-                                    .font(.subheadline)
-                                    .fontWeight(.medium)
-                                    .foregroundColor(.textPrimary)
-                                Spacer()
-                                Image(systemName: "info.circle")
-                                    .foregroundColor(.textSecondary)
-                            }
-                            .padding()
-                            .background(Color.backgroundSecondary)
-                            .cornerRadius(8)
-                        }
-                        .padding(.top, 16)
-                    }
-                    .padding()
+                    portfolioHeader
                     
-                    // Asset Allocation (Donut)
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text("Portfolio's Historical Performance")
-                            .font(.headline)
-                            .foregroundColor(.textPrimary)
-                            .padding(.horizontal)
-                        
-                        Text("Based on a simulated investment of SAR 1,000")
-                            .font(.caption)
-                            .foregroundColor(.textSecondary)
-                            .padding(.horizontal)
-                        
-                        Chart {
-                            ForEach(mockPerformanceData) { point in
-                                AreaMark(
-                                    x: .value("Year", point.date),
-                                    y: .value("Value", point.value)
-                                )
-                                .foregroundStyle(
-                                    LinearGradient(
-                                        colors: [.primaryPurple.opacity(0.6), .primaryPurple.opacity(0.1)],
-                                        startPoint: .top,
-                                        endPoint: .bottom
-                                    )
-                                )
-                                
-                                LineMark(
-                                    x: .value("Year", point.date),
-                                    y: .value("Value", point.value)
-                                )
-                                .foregroundStyle(Color.primaryPurple)
-                            }
-                        }
-                        .frame(height: 200)
-                        .padding(.horizontal)
-                        
-                        HStack(spacing: 16) {
-                            PerformanceStatCard(title: "Max historical annual return", value: "19.5%")
-                            PerformanceStatCard(title: "Min historical annual return", value: "-16.1%")
-                        }
-                        .padding(.horizontal)
-                    }
+                    // Key Statistics
+                    keyStatisticsSection
                     
-                    // Asset Allocation (Donut)
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text("Asset Allocation")
-                            .font(.headline)
-                            .padding(.horizontal)
-                        
-                        ZStack {
-                            Chart(risk.allocations) { allocation in
-                                SectorMark(
-                                    angle: .value("Percentage", allocation.percentage),
-                                    innerRadius: .ratio(0.65),
-                                    angularInset: 2
-                                )
-                                .foregroundStyle(by: .value("Asset", allocation.name))
-                            }
-                            .frame(height: 250)
-                            .chartLegend(position: .bottom, spacing: 20)
-                            
-                            VStack {
-                                Text("Stocks")
-                                    .font(.headline)
-                                    .foregroundColor(.textSecondary)
-                                Text("40.00%") // Dynamic based on selection would be better
-                                    .font(.title3)
-                                    .fontWeight(.bold)
-                                    .foregroundColor(.textPrimary)
-                            }
-                        }
-                        .padding(.horizontal)
-                    }
+                    // Asset Allocation Pie Chart
+                    allocationChartSection
                     
-                    // Fund Distribution
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text("Fund Distribution")
-                            .font(.headline)
-                            .padding(.horizontal)
-                        
-                        VStack(spacing: 12) {
-                            ForEach(risk.allocations) { allocation in
-                                FundRow(allocation: allocation)
-                            }
-                        }
-                        .padding(.horizontal)
-                    }
+                    // Fund Distribution List
+                    fundDistributionSection
                     
-                    // Top Companies (Logos)
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text("Portfolio's Top Companies")
-                            .font(.headline)
-                            .padding(.horizontal)
-                        
-                        Text("This portfolio covers 1040+ companies, 17 sectors, Sukuk, real estate and gold.")
-                            .font(.caption)
-                            .foregroundColor(.textSecondary)
-                            .padding(.horizontal)
-                        
-                        LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 4), spacing: 20) {
-                            ForEach(mockTopCompanies, id: \.self) { company in
-                                VStack {
-                                    Circle()
-                                        .fill(Color.white)
-                                        .frame(height: 50)
-                                        .shadow(color: Color.black.opacity(0.1), radius: 2)
-                                        .overlay(
-                                            Image(systemName: company.icon)
-                                                .font(.title2)
-                                                .foregroundColor(company.color)
-                                        )
-                                    
-                                    Text(company.name)
-                                        .font(.caption2)
-                                        .foregroundColor(.textSecondary)
-                                        .lineLimit(1)
-                                }
-                            }
-                        }
-                        .padding()
-                    }
-                    
-                    // Map
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text("Portfolio Coverage")
-                            .font(.headline)
-                            .padding(.horizontal)
-                        
-                        Text("Portfolio coverage of 55 countries")
-                            .font(.caption)
-                            .foregroundColor(.textSecondary)
-                            .padding(.horizontal)
-                        
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 12)
-                            
-                                .fill(Color.white)
-                                .frame(height: 220)
-                                .shadow(color: Color.black.opacity(0.05), radius: 4)
-                            
-                            Image(systemName: "globe.asia.australia.fill")
-                                .resizable()
-                                .aspectRatio(contentMode: .fit)
-                                .frame(height: 180)
-                                .foregroundColor(.primaryPurple.opacity(0.8))
-                            
-                            VStack {
-                                Spacer()
-                                HStack {
-                                    Circle()
-                                        .fill(Color.primaryPurple)
-                                        .frame(width: 8, height: 8)
-                                    Text("Developed Markets")
-                                        .font(.caption2)
-                                        .foregroundColor(.textSecondary)
-                                    
-                                    Circle()
-                                        .fill(Color.primaryGreen)
-                                        .frame(width: 8, height: 8)
-                                    Text("Emerging Markets")
-                                        .font(.caption2)
-                                        .foregroundColor(.textSecondary)
-                                }
-                                .padding(.bottom, 16)
-                            }
-                        }
-                        .padding(.horizontal)
-                    }
+                    // Portfolio Suitability
+                    suitabilitySection
                     
                     // Confirm Button
-                    Button(action: {
-                        showingInvestSheet = true
-                    }) {
-                        Text("Invest in this portfolio")
-                            .font(.headline)
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.primaryGreen)
-                            .cornerRadius(12)
-                    }
-                    .padding()
+                    selectPortfolioButton
                 }
+                .padding(.horizontal, 20)
                 .padding(.bottom, 40)
             }
+            .background(Color.backgroundPrimary)
             .navigationBarHidden(true)
             .onAppear {
                 Task {
@@ -306,7 +71,348 @@ struct PortfolioDetailView: View {
             }
         }
     }
+    
+    // MARK: - Portfolio Header
+    
+    private var portfolioHeader: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                // Portfolio Icon
+                ZStack {
+                    Circle()
+                        .fill(risk.color.opacity(0.15))
+                        .frame(width: 56, height: 56)
+                    
+                    Image(systemName: risk.icon)
+                        .font(.title2)
+                        .foregroundColor(risk.color)
+                }
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(risk.title)
+                        .font(.title2)
+                        .fontWeight(.bold)
+                        .foregroundColor(.textPrimary)
+                    
+                    // Risk Level Indicator
+                    HStack(spacing: 4) {
+                        ForEach(0..<4) { index in
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(index < risk.riskScore ? risk.color : Color.gray.opacity(0.3))
+                                .frame(width: 20, height: 6)
+                        }
+                        Text("Risk Level \(risk.riskScore)/4")
+                            .font(.caption2)
+                            .foregroundColor(.textSecondary)
+                            .padding(.leading, 4)
+                    }
+                }
+                
+                Spacer()
+                
+                Button(action: { presentationMode.wrappedValue.dismiss() }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title2)
+                        .foregroundColor(.textTertiary)
+                }
+            }
+            
+            // Description
+            Text(risk.detailedDescription)
+                .font(.subheadline)
+                .foregroundColor(.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding()
+        .background(Color.backgroundCard)
+        .cornerRadius(16)
+    }
+    
+    // MARK: - Key Statistics
+    
+    private var keyStatisticsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Key Statistics")
+                .font(.headline)
+                .foregroundColor(.textPrimary)
+            
+            LazyVGrid(columns: [
+                GridItem(.flexible()),
+                GridItem(.flexible())
+            ], spacing: 12) {
+                StatCard(
+                    title: "Expected Return",
+                    value: risk.averageReturn,
+                    icon: "chart.line.uptrend.xyaxis",
+                    color: .primaryGreen
+                )
+                
+                StatCard(
+                    title: "Volatility",
+                    value: risk.standardDeviation,
+                    icon: "waveform.path.ecg",
+                    color: .primaryOrange
+                )
+                
+                StatCard(
+                    title: "Max Drawdown",
+                    value: "\(String(format: "%.0f", risk.statistics.maxDrawdown * 100))%",
+                    icon: "arrow.down.right",
+                    color: .errorRed
+                )
+                
+                StatCard(
+                    title: "Expense Ratio",
+                    value: risk.totalExpenseRatioFormatted,
+                    icon: "percent",
+                    color: .primaryBlue
+                )
+                
+                StatCard(
+                    title: "Time Horizon",
+                    value: risk.timeHorizon,
+                    icon: "clock",
+                    color: .primaryPurple
+                )
+                
+                StatCard(
+                    title: "Sharpe Ratio",
+                    value: String(format: "%.2f", risk.statistics.sharpeRatio),
+                    icon: "gauge",
+                    color: .primaryGreen
+                )
+            }
+        }
+    }
+    
+    // MARK: - Allocation Chart
+    
+    private var allocationChartSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Asset Allocation")
+                .font(.headline)
+                .foregroundColor(.textPrimary)
+            
+            ForsaCard {
+                VStack(spacing: 20) {
+                    // Donut Chart
+                    ZStack {
+                        Chart(risk.allocations) { allocation in
+                            SectorMark(
+                                angle: .value("Percentage", allocation.percentage),
+                                innerRadius: .ratio(0.6),
+                                angularInset: 2
+                            )
+                            .foregroundStyle(allocation.assetClass.color)
+                        }
+                        .frame(height: 200)
+                        
+                        // Center text showing dominant asset class
+                        VStack(spacing: 4) {
+                            let dominantClass = risk.allocationByClass.max { $0.value < $1.value }
+                            if let dominant = dominantClass {
+                                Text(dominant.key.rawValue)
+                                    .font(.caption)
+                                    .foregroundColor(.textSecondary)
+                                Text("\(Int(dominant.value * 100))%")
+                                    .font(.title2)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(.textPrimary)
+                            }
+                        }
+                    }
+                    
+                    // Legend
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                        ForEach(Array(risk.allocationByClass.sorted { $0.value > $1.value }), id: \.key) { assetClass, percentage in
+                            HStack(spacing: 8) {
+                                Circle()
+                                    .fill(assetClass.color)
+                                    .frame(width: 10, height: 10)
+                                
+                                Text(assetClass.rawValue)
+                                    .font(.caption)
+                                    .foregroundColor(.textSecondary)
+                                
+                                Spacer()
+                                
+                                Text("\(Int(percentage * 100))%")
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.textPrimary)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // MARK: - Fund Distribution
+    
+    private var fundDistributionSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Fund Distribution")
+                .font(.headline)
+                .foregroundColor(.textPrimary)
+            
+            VStack(spacing: 12) {
+                ForEach(risk.allocations.sorted { $0.percentage > $1.percentage }) { allocation in
+                    FundDetailRow(allocation: allocation)
+                }
+            }
+        }
+    }
+    
+    // MARK: - Suitability
+    
+    private var suitabilitySection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Best Suited For")
+                .font(.headline)
+                .foregroundColor(.textPrimary)
+            
+            ForsaCard {
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(risk.suitableFor, id: \.self) { item in
+                        HStack(spacing: 12) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.subheadline)
+                                .foregroundColor(.primaryGreen)
+                            
+                            Text(item)
+                                .font(.subheadline)
+                                .foregroundColor(.textPrimary)
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // MARK: - Select Button
+    
+    private var selectPortfolioButton: some View {
+        VStack(spacing: 12) {
+            Button(action: {
+                coordinator.updateSelectedPortfolio(risk)
+                presentationMode.wrappedValue.dismiss()
+            }) {
+                Text("Select This Portfolio")
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(risk.color)
+                    .cornerRadius(12)
+            }
+            
+            if viewModel.accountCash > 0 {
+                Button(action: {
+                    showingInvestSheet = true
+                }) {
+                    Text("Invest Now (\(CurrencyService.shared.formatUSD(viewModel.accountCash)) available)")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                        .foregroundColor(risk.color)
+                }
+            }
+        }
+        .padding(.top, 8)
+    }
 }
+
+// MARK: - Supporting Views
+
+struct StatCard: View {
+    let title: String
+    let value: String
+    let icon: String
+    let color: Color
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.caption)
+                    .foregroundColor(color)
+                Text(title)
+                    .font(.caption)
+                    .foregroundColor(.textSecondary)
+            }
+            
+            Text(value)
+                .font(.headline)
+                .fontWeight(.bold)
+                .foregroundColor(.textPrimary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(Color.backgroundSecondary)
+        .cornerRadius(10)
+    }
+}
+
+struct FundDetailRow: View {
+    let allocation: AssetAllocation
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            // Asset Class Icon
+            ZStack {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(allocation.assetClass.color.opacity(0.15))
+                    .frame(width: 44, height: 44)
+                
+                Image(systemName: allocation.assetClass.icon)
+                    .font(.body)
+                    .foregroundColor(allocation.assetClass.color)
+            }
+            
+            // Fund Details
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(allocation.ticker)
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.textPrimary)
+                    
+                    Text("•")
+                        .foregroundColor(.textSecondary)
+                    
+                    Text(allocation.assetClass.rawValue)
+                        .font(.caption)
+                        .foregroundColor(.textSecondary)
+                }
+                
+                Text(allocation.fullName)
+                    .font(.caption)
+                    .foregroundColor(.textSecondary)
+                    .lineLimit(1)
+            }
+            
+            Spacer()
+            
+            // Percentage
+            VStack(alignment: .trailing, spacing: 4) {
+                Text("\(Int(allocation.percentage * 100))%")
+                    .font(.headline)
+                    .fontWeight(.bold)
+                    .foregroundColor(.textPrimary)
+                
+                Text("ER: \(String(format: "%.2f", allocation.expenseRatio * 100))%")
+                    .font(.caption2)
+                    .foregroundColor(.textSecondary)
+            }
+        }
+        .padding(12)
+        .background(Color.backgroundCard)
+        .cornerRadius(12)
+        .shadow(color: Color.shadowLight, radius: 2, x: 0, y: 1)
+    }
+}
+
+// MARK: - Invest Sheet
 
 struct InvestSheet: View {
     @ObservedObject var viewModel: PortfolioDetailViewModel
@@ -373,7 +479,7 @@ struct InvestSheet: View {
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
                 .padding()
-                .background(Color.primaryGreen)
+                .background(riskLevel.color)
                 .cornerRadius(10)
                 .disabled(amountKD.isEmpty || Double(amountKD) == nil || viewModel.isInvesting)
                 
@@ -387,84 +493,9 @@ struct InvestSheet: View {
     }
 }
 
-struct PerformanceStatCard: View {
-    let title: String
-    let value: String
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.caption2)
-                .foregroundColor(.textSecondary)
-                .lineLimit(2)
-            
-            Text(value)
-                .font(.subheadline)
-                .fontWeight(.bold)
-                .foregroundColor(.textPrimary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding()
-        .background(Color.backgroundSecondary)
-        .cornerRadius(8)
-    }
+// MARK: - Preview
+
+#Preview {
+    PortfolioDetailView(risk: .moderate)
+        .environmentObject(AppCoordinator())
 }
-
-struct FundRow: View {
-    let allocation: AssetAllocation
-    
-    var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("\(allocation.name) (\(allocation.ticker))")
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                    .foregroundColor(.textPrimary)
-                
-                Text(allocation.name) // Description placeholder
-                    .font(.caption)
-                    .foregroundColor(.textSecondary)
-            }
-            
-            Spacer()
-            
-            ZStack {
-                Circle()
-                    .stroke(Color.gray.opacity(0.2), lineWidth: 4)
-                    .frame(width: 32, height: 32)
-                
-                Circle()
-                    .trim(from: 0, to: allocation.percentage)
-                    .stroke(Color.primaryPurple, style: StrokeStyle(lineWidth: 4, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                    .frame(width: 32, height: 32)
-                
-                Text("\(Int(allocation.percentage * 100))%")
-                    .font(.system(size: 8))
-                    .bold()
-            }
-        }
-        .padding()
-        .background(Color.white)
-        .cornerRadius(12)
-        .shadow(color: Color.shadowLight, radius: 2, x: 0, y: 1)
-    }
-}
-
-// Mock Data for Charts
-struct PerformancePoint: Identifiable {
-    let id = UUID()
-    let date: Date
-    let value: Double
-}
-
-let mockPerformanceData: [PerformancePoint] = {
-    let calendar = Calendar.current
-    let now = Date()
-    return (0..<10).map { i in
-        let date = calendar.date(byAdding: .year, value: -9 + i, to: now)!
-        let value = 1000.0 * pow(1.08, Double(i)) // 8% growth
-        return PerformancePoint(date: date, value: value)
-    }
-}()
-

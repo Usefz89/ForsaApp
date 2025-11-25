@@ -15,6 +15,8 @@ struct DashboardView: View {
     @State private var showingWithdraw = false
     @State private var isInvesting = false
     @State private var showInvestmentResult = false
+    @State private var showingPortfolioSelection = false
+    @State private var showingPortfolioDetail = false
 
     var body: some View {
         NavigationView {
@@ -30,16 +32,14 @@ struct DashboardView: View {
                     }
                     
                     if viewModel.needsAccountCreation {
-                        // If needsAccountCreation is true, it means we might be in Broker Mode
-                        // and the user hasn't created a sub-account yet.
-                        // However, we now try to handle this during Sign Up.
-                        // If this is still true here, something might have failed,
-                        // so we offer a retry button.
                         createAccountCard
                     }
                     
                     // Header with user greeting
                     headerView
+                    
+                    // Current Portfolio Section - Always show
+                    currentPortfolioSection
                     
                     // Prompt to invest if cash available but no positions
                     if viewModel.canInvestNow && coordinator.selectedPortfolio != nil {
@@ -66,19 +66,13 @@ struct DashboardView: View {
                 await viewModel.refreshData()
             }
             .sheet(isPresented: $showingAddFunds, onDismiss: {
-                // Refresh data after deposit
-                Task {
-                    await viewModel.refreshData()
-                }
+                Task { await viewModel.refreshData() }
             }) {
                 DepositFlowView()
                     .environmentObject(coordinator)
             }
             .sheet(isPresented: $showingWithdraw, onDismiss: {
-                // Refresh data after withdraw
-                Task {
-                    await viewModel.refreshData()
-                }
+                Task { await viewModel.refreshData() }
             }) {
                 WithdrawFlowView()
             }
@@ -86,10 +80,22 @@ struct DashboardView: View {
                 if let result = coordinator.portfolioInvestmentResult {
                     InvestmentResultView(result: result, depositAmount: viewModel.cashBalance) {
                         showInvestmentResult = false
-                        Task {
-                            await viewModel.refreshData()
-                        }
+                        Task { await viewModel.refreshData() }
                     }
+                }
+            }
+            .sheet(isPresented: $showingPortfolioSelection) {
+                PortfolioSelectionSheet(
+                    currentPortfolio: coordinator.selectedPortfolio,
+                    onSelect: { newPortfolio in
+                        coordinator.updateSelectedPortfolio(newPortfolio)
+                        showingPortfolioSelection = false
+                    }
+                )
+            }
+            .sheet(isPresented: $showingPortfolioDetail) {
+                if let portfolio = coordinator.selectedPortfolio {
+                    PortfolioDetailView(risk: portfolio)
                 }
             }
         }
@@ -100,6 +106,153 @@ struct DashboardView: View {
         }
         .overlay(isLoadingOverlay)
         .overlay(investingOverlay)
+    }
+    
+    // MARK: - Current Portfolio Section
+    
+    private var currentPortfolioSection: some View {
+        VStack(spacing: 16) {
+            HStack {
+                Text("Your Investment Strategy")
+                    .font(.headline)
+                    .foregroundColor(.textPrimary)
+                Spacer()
+                
+                Button(action: { showingPortfolioSelection = true }) {
+                    Text("Change")
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundColor(.primaryPurple)
+                }
+            }
+            
+            if let portfolio = coordinator.selectedPortfolio {
+                // Show selected portfolio
+                ForsaCard {
+                    VStack(spacing: 16) {
+                        // Portfolio Header
+                        HStack(spacing: 12) {
+                            ZStack {
+                                Circle()
+                                    .fill(portfolio.color.opacity(0.15))
+                                    .frame(width: 50, height: 50)
+                                
+                                Image(systemName: portfolio.icon)
+                                    .font(.title2)
+                                    .foregroundColor(portfolio.color)
+                            }
+                            
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(portfolio.title)
+                                    .font(.headline)
+                                    .foregroundColor(.textPrimary)
+                                
+                                HStack(spacing: 4) {
+                                    ForEach(0..<4) { index in
+                                        RoundedRectangle(cornerRadius: 2)
+                                            .fill(index < portfolio.riskScore ? portfolio.color : Color.gray.opacity(0.3))
+                                            .frame(width: 16, height: 4)
+                                    }
+                                    Text("Risk Level")
+                                        .font(.caption2)
+                                        .foregroundColor(.textSecondary)
+                                }
+                            }
+                            
+                            Spacer()
+                            
+                            Button(action: { showingPortfolioDetail = true }) {
+                                Image(systemName: "info.circle")
+                                    .font(.title3)
+                                    .foregroundColor(.textSecondary)
+                            }
+                        }
+                        
+                        Divider()
+                        
+                        // Allocation Summary by Asset Class
+                        HStack(spacing: 0) {
+                            ForEach(Array(portfolio.allocationByClass.sorted { $0.value > $1.value }.prefix(3)), id: \.key) { assetClass, percentage in
+                                VStack(spacing: 4) {
+                                    Image(systemName: assetClass.icon)
+                                        .font(.caption)
+                                        .foregroundColor(assetClass.color)
+                                    
+                                    Text("\(Int(percentage * 100))%")
+                                        .font(.callout)
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(.textPrimary)
+                                    
+                                    Text(assetClass.rawValue)
+                                        .font(.caption2)
+                                        .foregroundColor(.textSecondary)
+                                }
+                                .frame(maxWidth: .infinity)
+                            }
+                        }
+                        
+                        // Expected Returns
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Expected Return")
+                                    .font(.caption2)
+                                    .foregroundColor(.textSecondary)
+                                Text(portfolio.averageReturn)
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(.primaryGreen)
+                            }
+                            
+                            Spacer()
+                            
+                            VStack(alignment: .trailing, spacing: 2) {
+                                Text("Time Horizon")
+                                    .font(.caption2)
+                                    .foregroundColor(.textSecondary)
+                                Text(portfolio.timeHorizon)
+                                    .font(.caption)
+                                    .fontWeight(.medium)
+                                    .foregroundColor(.textPrimary)
+                            }
+                        }
+                        .padding(.top, 4)
+                    }
+                }
+            } else {
+                // No portfolio selected - prompt to choose one
+                ForsaCard {
+                    VStack(spacing: 16) {
+                        Image(systemName: "chart.pie")
+                            .font(.system(size: 40))
+                            .foregroundColor(.primaryPurple.opacity(0.6))
+                        
+                        Text("No Portfolio Selected")
+                            .font(.headline)
+                            .foregroundColor(.textPrimary)
+                        
+                        Text("Choose an investment strategy to automatically invest your funds based on your risk tolerance.")
+                            .font(.caption)
+                            .foregroundColor(.textSecondary)
+                            .multilineTextAlignment(.center)
+                        
+                        Button(action: { showingPortfolioSelection = true }) {
+                            HStack {
+                                Image(systemName: "plus.circle.fill")
+                                Text("Choose Portfolio")
+                            }
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color.primaryPurple)
+                            .cornerRadius(10)
+                        }
+                    }
+                    .padding(.vertical, 8)
+                }
+            }
+        }
     }
     
     private var isLoadingOverlay: some View {
@@ -608,6 +761,226 @@ struct HoldingRow: View {
             }
         }
         .padding(.vertical, 4)
+    }
+}
+
+// MARK: - Portfolio Selection Sheet
+
+struct PortfolioSelectionSheet: View {
+    let currentPortfolio: RiskLevel?
+    let onSelect: (RiskLevel) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var selectedPortfolio: RiskLevel?
+    
+    init(currentPortfolio: RiskLevel?, onSelect: @escaping (RiskLevel) -> Void) {
+        self.currentPortfolio = currentPortfolio
+        self.onSelect = onSelect
+        _selectedPortfolio = State(initialValue: currentPortfolio)
+    }
+    
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                VStack(spacing: 20) {
+                    // Header
+                    VStack(spacing: 8) {
+                        Text("Choose Your Strategy")
+                            .font(.title2)
+                            .fontWeight(.bold)
+                            .foregroundColor(.textPrimary)
+                        
+                        Text("Select an investment portfolio that matches your risk tolerance and goals")
+                            .font(.subheadline)
+                            .foregroundColor(.textSecondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding(.top, 8)
+                    
+                    // Portfolio Options
+                    VStack(spacing: 12) {
+                        ForEach(RiskLevel.allCases, id: \.self) { risk in
+                            PortfolioOptionCard(
+                                risk: risk,
+                                isSelected: selectedPortfolio == risk,
+                                isCurrent: currentPortfolio == risk
+                            ) {
+                                withAnimation(.spring(response: 0.3)) {
+                                    selectedPortfolio = risk
+                                }
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                }
+                .padding(.bottom, 100)
+            }
+            .background(Color.backgroundPrimary)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") { dismiss() }
+                        .foregroundColor(.textSecondary)
+                }
+            }
+            .safeAreaInset(edge: .bottom) {
+                VStack(spacing: 12) {
+                    if let selected = selectedPortfolio {
+                        VStack(spacing: 4) {
+                            Text("Selected: \(selected.title)")
+                                .font(.caption)
+                                .foregroundColor(.textSecondary)
+                            Text("Expected Return: \(selected.averageReturn)")
+                                .font(.caption)
+                                .fontWeight(.medium)
+                                .foregroundColor(.primaryGreen)
+                        }
+                    }
+                    
+                    Button(action: {
+                        if let selected = selectedPortfolio {
+                            onSelect(selected)
+                        }
+                    }) {
+                        Text("Confirm Selection")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(selectedPortfolio != nil ? Color.primaryPurple : Color.gray)
+                            .cornerRadius(12)
+                    }
+                    .disabled(selectedPortfolio == nil)
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 16)
+                .background(Color.backgroundPrimary)
+            }
+        }
+    }
+}
+
+struct PortfolioOptionCard: View {
+    let risk: RiskLevel
+    let isSelected: Bool
+    let isCurrent: Bool
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 12) {
+                HStack(spacing: 12) {
+                    // Selection indicator
+                    ZStack {
+                        Circle()
+                            .stroke(isSelected ? risk.color : Color.borderPrimary, lineWidth: 2)
+                            .frame(width: 24, height: 24)
+                        
+                        if isSelected {
+                            Circle()
+                                .fill(risk.color)
+                                .frame(width: 14, height: 14)
+                        }
+                    }
+                    
+                    // Icon
+                    ZStack {
+                        Circle()
+                            .fill(risk.color.opacity(0.15))
+                            .frame(width: 44, height: 44)
+                        
+                        Image(systemName: risk.icon)
+                            .font(.title3)
+                            .foregroundColor(risk.color)
+                    }
+                    
+                    // Content
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text(risk.title)
+                                .font(.headline)
+                                .foregroundColor(.textPrimary)
+                            
+                            if isCurrent {
+                                Text("CURRENT")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(risk.color)
+                                    .cornerRadius(4)
+                            }
+                        }
+                        
+                        Text(risk.description)
+                            .font(.caption)
+                            .foregroundColor(.textSecondary)
+                            .lineLimit(2)
+                    }
+                    
+                    Spacer()
+                }
+                
+                // Stats Row
+                HStack(spacing: 16) {
+                    StatBadge(
+                        icon: "chart.line.uptrend.xyaxis",
+                        label: "Return",
+                        value: risk.averageReturn,
+                        color: .primaryGreen
+                    )
+                    
+                    StatBadge(
+                        icon: "waveform.path.ecg",
+                        label: "Volatility",
+                        value: risk.standardDeviation,
+                        color: .primaryOrange
+                    )
+                    
+                    StatBadge(
+                        icon: "clock",
+                        label: "Horizon",
+                        value: risk.timeHorizon,
+                        color: .primaryBlue
+                    )
+                }
+            }
+            .padding(16)
+            .background(Color.backgroundCard)
+            .cornerRadius(12)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(isSelected ? risk.color : Color.borderPrimary, lineWidth: isSelected ? 2 : 1)
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+}
+
+struct StatBadge: View {
+    let icon: String
+    let label: String
+    let value: String
+    let color: Color
+    
+    var body: some View {
+        VStack(spacing: 2) {
+            HStack(spacing: 2) {
+                Image(systemName: icon)
+                    .font(.system(size: 9))
+                    .foregroundColor(color)
+                Text(label)
+                    .font(.system(size: 9))
+                    .foregroundColor(.textSecondary)
+            }
+            Text(value)
+                .font(.caption2)
+                .fontWeight(.semibold)
+                .foregroundColor(.textPrimary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 6)
+        .background(Color.backgroundSecondary)
+        .cornerRadius(6)
     }
 }
 
