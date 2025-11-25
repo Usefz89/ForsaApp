@@ -216,33 +216,165 @@ class AlpacaTradingService: ObservableObject {
         return account
     }
     
-    /// Funds the account (Cash Injection Simulation)
-    func fundAccount(accountId: String, amount: Double) async throws {
-        if isTradingMode {
-            // Trading API doesn't support Journals for self-funding in the same way.
-            // Sandbox Paper Trading accounts are pre-funded. We might just log this or skip.
-            print("Skipping funding in Trading Mode (Paper accounts are pre-funded)")
-            return
-        }
+    /// Creates an ACH relationship for sandbox funding
+    func createSandboxACHRelationship(accountId: String) async throws -> String {
+        print("🏦 Creating sandbox ACH relationship for account: \(accountId)")
         
-        guard amount > 0 else { return }
-        let url = URL(string: "\(brokerBaseURL)/journals")!
+        let url = URL(string: "\(brokerBaseURL)/accounts/\(accountId)/ach_relationships")!
         var request = try createRequest(url: url, method: "POST")
         
+        // Sandbox test bank details
         let body: [String: Any] = [
-            "to_account": accountId,
-            "from_account": "firm_account",
-            "amount": String(format: "%.2f", amount),
-            "entry_type": "JNLS",
-            "description": "Cash Deposit Simulation"
+            "account_owner_name": "Test User",
+            "bank_account_type": "CHECKING",
+            "bank_account_number": "32131231abc",
+            "bank_routing_number": "121000358",
+            "nickname": "Test Bank Account"
         ]
         
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, response) = try await URLSession.shared.data(for: request)
+        
+        if let responseString = String(data: data, encoding: .utf8) {
+            print("📥 ACH Relationship Response: \(responseString)")
+        }
+        
         try validateResponse(response, data: data)
+        
+        // Parse the relationship ID
+        if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let relationshipId = json["id"] as? String {
+            print("✅ ACH Relationship Created: \(relationshipId)")
+            return relationshipId
+        }
+        
+        throw URLError(.badServerResponse)
+    }
+    
+    /// Gets existing ACH relationships
+    func getACHRelationships(accountId: String) async throws -> [[String: Any]] {
+        let url = URL(string: "\(brokerBaseURL)/accounts/\(accountId)/ach_relationships")!
+        let request = try createRequest(url: url, method: "GET")
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validateResponse(response, data: data)
+        
+        if let relationships = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+            return relationships
+        }
+        return []
+    }
+    
+    /// Funds the account via ACH Transfer (Sandbox)
+    func fundAccount(accountId: String, amount: Double) async throws {
+        print("💰 Funding account \(accountId) with $\(amount)")
+        
+        if isTradingMode {
+            print("⚠️ Skipping funding in Trading Mode (Paper accounts are pre-funded)")
+            return
+        }
+        
+        guard amount > 0 else { return }
+        
+        // First, check if we have an ACH relationship, if not create one
+        var relationshipId: String?
+        let relationships = try await getACHRelationships(accountId: accountId)
+        
+        if let firstRelationship = relationships.first,
+           let id = firstRelationship["id"] as? String {
+            relationshipId = id
+            print("📌 Using existing ACH relationship: \(id)")
+        } else {
+            // Create a new ACH relationship for sandbox
+            relationshipId = try await createSandboxACHRelationship(accountId: accountId)
+        }
+        
+        guard let achRelationshipId = relationshipId else {
+            throw URLError(.badServerResponse)
+        }
+        
+        // Create transfer
+        let url = URL(string: "\(brokerBaseURL)/accounts/\(accountId)/transfers")!
+        var request = try createRequest(url: url, method: "POST")
+        
+        let body: [String: Any] = [
+            "transfer_type": "ach",
+            "relationship_id": achRelationshipId,
+            "amount": String(format: "%.2f", amount),
+            "direction": "INCOMING"
+        ]
+        
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        if let responseString = String(data: data, encoding: .utf8) {
+            print("📥 Transfer Response: \(responseString)")
+        }
+        
+        try validateResponse(response, data: data)
+        print("✅ Funding transfer initiated successfully!")
         
         // Refresh account
         _ = try? await fetchAccountDetails(accountId: accountId)
+    }
+    
+    /// Withdraws funds from the account via ACH Transfer (Sandbox)
+    func withdrawFunds(accountId: String, amount: Double) async throws {
+        print("💸 Withdrawing $\(amount) from account \(accountId)")
+        
+        if isTradingMode {
+            print("⚠️ Withdrawals not supported in Trading Mode")
+            return
+        }
+        
+        guard amount > 0 else { return }
+        
+        // Get existing ACH relationship
+        let relationships = try await getACHRelationships(accountId: accountId)
+        
+        guard let firstRelationship = relationships.first,
+              let achRelationshipId = firstRelationship["id"] as? String else {
+            print("❌ No ACH relationship found. Cannot withdraw.")
+            throw URLError(.badServerResponse)
+        }
+        
+        // Create withdrawal transfer
+        let url = URL(string: "\(brokerBaseURL)/accounts/\(accountId)/transfers")!
+        var request = try createRequest(url: url, method: "POST")
+        
+        let body: [String: Any] = [
+            "transfer_type": "ach",
+            "relationship_id": achRelationshipId,
+            "amount": String(format: "%.2f", amount),
+            "direction": "OUTGOING"
+        ]
+        
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        if let responseString = String(data: data, encoding: .utf8) {
+            print("📥 Withdrawal Response: \(responseString)")
+        }
+        
+        try validateResponse(response, data: data)
+        print("✅ Withdrawal transfer initiated successfully!")
+        
+        // Refresh account
+        _ = try? await fetchAccountDetails(accountId: accountId)
+    }
+    
+    /// Gets transfer history for an account
+    func getTransfers(accountId: String) async throws -> [[String: Any]] {
+        let url = URL(string: "\(brokerBaseURL)/accounts/\(accountId)/transfers")!
+        let request = try createRequest(url: url, method: "GET")
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validateResponse(response, data: data)
+        
+        if let transfers = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+            return transfers
+        }
+        return []
     }
     
     // MARK: - Trading

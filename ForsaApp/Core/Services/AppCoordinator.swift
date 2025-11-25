@@ -13,53 +13,176 @@ class AppCoordinator: ObservableObject {
     @Published var currentUser: User?
     @Published var isLoading = true
     @Published var hasCompletedKYC = false
+    
+    // MARK: - UserDefaults Keys
+    private enum StorageKeys {
+        static let isLoggedIn = "forsa_is_logged_in"
+        static let savedUser = "forsa_saved_user"
+        static let alpacaAccountId = "alpaca_account_id"
+        static let userEmail = "forsa_user_email"
+        static let userPassword = "forsa_user_password" // In production, use Keychain!
+    }
 
     init() {
         checkAuthenticationStatus()
     }
 
     private func checkAuthenticationStatus() {
-        // Simulate checking authentication status
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            // For demo purposes, we'll start with authentication required
-            self.isAuthenticated = false
-            self.isLoading = false
+        print("🔍 Checking authentication status...")
+        
+        // Check if user was previously logged in
+        let isLoggedIn = UserDefaults.standard.bool(forKey: StorageKeys.isLoggedIn)
+        
+        if isLoggedIn, let savedUserData = UserDefaults.standard.data(forKey: StorageKeys.savedUser) {
+            do {
+                let savedUser = try JSONDecoder().decode(User.self, from: savedUserData)
+                print("✅ Found saved user: \(savedUser.email)")
+                
+                // Restore session
+                Task {
+                    // Initialize Alpaca session in background
+                    _ = await AlpacaTradingService.shared.initializeSession()
+                    
+                    await MainActor.run {
+                        self.currentUser = savedUser
+                        self.isAuthenticated = true
+                        self.hasCompletedKYC = savedUser.hasCompletedKYC
+                        self.isLoading = false
+                    }
+                }
+            } catch {
+                print("❌ Failed to decode saved user: \(error)")
+                clearSavedSession()
+                isLoading = false
+            }
+        } else {
+            print("📝 No saved session found")
+            isLoading = false
         }
     }
     
     private func checkKYCStatus() {
         hasCompletedKYC = currentUser?.hasCompletedKYC ?? false
     }
+    
+    // MARK: - Session Persistence
+    
+    private func saveSession(user: User, email: String, password: String) {
+        print("💾 Saving user session...")
+        
+        // Save user data
+        if let userData = try? JSONEncoder().encode(user) {
+            UserDefaults.standard.set(userData, forKey: StorageKeys.savedUser)
+        }
+        
+        // Save login state
+        UserDefaults.standard.set(true, forKey: StorageKeys.isLoggedIn)
+        
+        // Save credentials for re-authentication (In production, use Keychain!)
+        UserDefaults.standard.set(email, forKey: StorageKeys.userEmail)
+        UserDefaults.standard.set(password, forKey: StorageKeys.userPassword)
+        
+        UserDefaults.standard.synchronize()
+        print("✅ Session saved successfully")
+    }
+    
+    private func updateSavedUser(_ user: User) {
+        if let userData = try? JSONEncoder().encode(user) {
+            UserDefaults.standard.set(userData, forKey: StorageKeys.savedUser)
+            UserDefaults.standard.synchronize()
+        }
+    }
+    
+    private func clearSavedSession() {
+        print("🗑️ Clearing saved session...")
+        UserDefaults.standard.removeObject(forKey: StorageKeys.isLoggedIn)
+        UserDefaults.standard.removeObject(forKey: StorageKeys.savedUser)
+        UserDefaults.standard.removeObject(forKey: StorageKeys.alpacaAccountId)
+        UserDefaults.standard.removeObject(forKey: StorageKeys.userEmail)
+        UserDefaults.standard.removeObject(forKey: StorageKeys.userPassword)
+        UserDefaults.standard.synchronize()
+    }
 
+    // MARK: - Sign In
+    
     func signIn(email: String, password: String) async throws {
-        // Simulate API call
-        try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second delay
-
-        // Create demo user
-        let user = User(
-            email: email,
-            firstName: "Ahmed",
-            lastName: "Al-Mansouri",
-            isVerified: true,
-            totalPortfolioValue: 25420.50,
-            totalGainLoss: 2840.30,
-            totalGainLossPercentage: 12.6,
-            followersCount: 128,
-            followingCount: 45,
-            isPublicProfile: true,
-            hasCompletedKYC: true,
-            psychologicalRiskScore: 65
-        )
-
-        await MainActor.run {
-            self.currentUser = user
-            self.isAuthenticated = true
-            self.checkKYCStatus()
+        print("🔐 Signing in user: \(email)")
+        
+        // 1. Check if we have a saved Alpaca account for this email
+        let savedEmail = UserDefaults.standard.string(forKey: StorageKeys.userEmail)
+        let savedPassword = UserDefaults.standard.string(forKey: StorageKeys.userPassword)
+        
+        // 2. Initialize Alpaca session
+        let sessionVerified = await AlpacaTradingService.shared.initializeSession()
+        print("🔐 Alpaca Session Verified: \(sessionVerified)")
+        
+        // 3. Check if this email matches a saved account
+        if savedEmail == email && savedPassword == password {
+            // Returning user - restore their session
+            if let savedUserData = UserDefaults.standard.data(forKey: StorageKeys.savedUser),
+               let savedUser = try? JSONDecoder().decode(User.self, from: savedUserData) {
+                print("✅ Credentials match saved user")
+                
+                await MainActor.run {
+                    self.currentUser = savedUser
+                    self.isAuthenticated = true
+                    self.hasCompletedKYC = savedUser.hasCompletedKYC
+                }
+                return
+            }
+        }
+        
+        // 4. For new sign-in or mismatched credentials, check if account exists
+        // In a real app, you'd verify against a backend. For now, we'll check Alpaca.
+        guard let accountId = UserDefaults.standard.string(forKey: StorageKeys.alpacaAccountId) else {
+            // No saved account - user needs to sign up first
+            throw NSError(domain: "AuthError", code: 404, 
+                         userInfo: [NSLocalizedDescriptionKey: "No account found. Please sign up first."])
+        }
+        
+        // 5. Verify the account exists in Alpaca
+        do {
+            let account = try await AlpacaTradingService.shared.fetchAccountDetails(accountId: accountId)
+            print("✅ Alpaca account verified: \(account.id)")
+            
+            // Create user from saved data or email
+            let user = User(
+                email: email,
+                firstName: savedEmail == email ? (UserDefaults.standard.string(forKey: "user_first_name") ?? "User") : "User",
+                lastName: savedEmail == email ? (UserDefaults.standard.string(forKey: "user_last_name") ?? "") : "",
+                isVerified: true,
+                totalPortfolioValue: account.equityValue,
+                totalGainLoss: 0,
+                totalGainLossPercentage: 0,
+                followersCount: 0,
+                followingCount: 0,
+                isPublicProfile: false,
+                cashBalance: account.cashValue,
+                hasCompletedKYC: true
+            )
+            
+            // Save the session
+            saveSession(user: user, email: email, password: password)
+            
+            await MainActor.run {
+                self.currentUser = user
+                self.isAuthenticated = true
+                self.checkKYCStatus()
+            }
+            
+        } catch {
+            print("❌ Failed to verify Alpaca account: \(error)")
+            throw NSError(domain: "AuthError", code: 401,
+                         userInfo: [NSLocalizedDescriptionKey: "Invalid credentials or account not found."])
         }
     }
 
+    // MARK: - Sign Up
+    
     func signUp(email: String, password: String, firstName: String, lastName: String) async throws {
-        // 1. Initialize Alpaca Session (Determine Mode: Broker vs Trading)
+        print("📝 Signing up new user: \(email)")
+        
+        // 1. Initialize Alpaca Session
         let sessionVerified = await AlpacaTradingService.shared.initializeSession()
         print("🔐 Session Verified: \(sessionVerified)")
         print("🔐 Is Trading Mode: \(AlpacaTradingService.shared.isTradingMode)")
@@ -69,18 +192,14 @@ class AppCoordinator: ObservableObject {
         // 2. Create or Link Alpaca Account
         do {
             if AlpacaTradingService.shared.isTradingMode {
-                // Paper Trading Mode: Just link the existing key's account
                 print("📌 Using Trading Mode - linking existing account")
                 if let account = AlpacaTradingService.shared.currentAccount {
                     alpacaAccountId = account.id
                 } else {
-                    // Should not happen if initializeSession returned true, but double check
-                    // Force fetch to be sure
-                     _ = await AlpacaTradingService.shared.initializeSession() // Re-check
-                     alpacaAccountId = AlpacaTradingService.shared.currentAccount?.id
+                    _ = await AlpacaTradingService.shared.initializeSession()
+                    alpacaAccountId = AlpacaTradingService.shared.currentAccount?.id
                 }
             } else {
-                // Broker Mode: Create a new sub-account
                 print("📌 Using Broker Mode - creating new sub-account")
                 alpacaAccountId = try await AlpacaTradingService.shared.createAccount(
                     email: email,
@@ -89,24 +208,18 @@ class AppCoordinator: ObservableObject {
                 )
             }
             
-            // Save the ID
+            // Save the Alpaca account ID
             if let id = alpacaAccountId {
-                UserDefaults.standard.set(id, forKey: "alpaca_account_id")
+                UserDefaults.standard.set(id, forKey: StorageKeys.alpacaAccountId)
+                print("✅ Alpaca Account ID saved: \(id)")
             }
             
         } catch {
-            print("Alpaca Account Creation Failed: \(error)")
-            // Re-throw the error to stop sign up if we want to enforce account creation
-            // Or just log it. Given user requirement "users will have ability to create accounts",
-            // failure here is critical. Let's rethrow or handle specifically.
-            // For now, print is okay, but user should know.
-            // Actually, let's let the UI handle it if we rethrow, but the UI catches and shows error.
+            print("❌ Alpaca Account Creation Failed: \(error)")
             throw error
         }
         
-        // Simulate API call for local user creation
-        try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second delay
-
+        // 3. Create local user
         let user = User(
             email: email,
             firstName: firstName,
@@ -118,24 +231,43 @@ class AppCoordinator: ObservableObject {
             followersCount: 0,
             followingCount: 0,
             isPublicProfile: false,
+            cashBalance: 0,
             hasCompletedKYC: false
         )
+        
+        // 4. Save user details for sign-in
+        UserDefaults.standard.set(firstName, forKey: "user_first_name")
+        UserDefaults.standard.set(lastName, forKey: "user_last_name")
+        
+        // 5. Save the session
+        saveSession(user: user, email: email, password: password)
 
         await MainActor.run {
             self.currentUser = user
             self.isAuthenticated = true
             self.checkKYCStatus()
         }
+        
+        print("✅ Sign up completed successfully!")
     }
 
+    // MARK: - Sign Out
+    
     func signOut() {
+        print("👋 Signing out...")
+        clearSavedSession()
         currentUser = nil
         isAuthenticated = false
         hasCompletedKYC = false
     }
 
+    // MARK: - Demo Account
+    
     func createDemoAccount() async {
         let demoUser = User.demo
+
+        // Save demo session
+        saveSession(user: demoUser, email: "demo@forsa.app", password: "demo123")
 
         await MainActor.run {
             self.currentUser = demoUser
@@ -144,10 +276,11 @@ class AppCoordinator: ObservableObject {
         }
     }
     
+    // MARK: - Onboarding Completion
+    
     func completeOnboarding(riskScore: Int, goal: Goal) {
-        guard var user = currentUser else { return }
+        guard let user = currentUser else { return }
         
-        // Update user with KYC completion
         var updatedGoals = user.goals
         updatedGoals.append(goal)
         
@@ -165,10 +298,14 @@ class AppCoordinator: ObservableObject {
             followersCount: user.followersCount,
             followingCount: user.followingCount,
             isPublicProfile: user.isPublicProfile,
+            cashBalance: user.cashBalance,
             hasCompletedKYC: true,
             psychologicalRiskScore: riskScore,
             goals: updatedGoals
         )
+        
+        // Update saved user
+        updateSavedUser(updatedUser)
         
         self.currentUser = updatedUser
         self.hasCompletedKYC = true

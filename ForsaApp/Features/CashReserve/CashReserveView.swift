@@ -384,26 +384,245 @@ struct QuickActionButton: View {
 // MARK: - Placeholder Views (to be implemented)
 
 struct WithdrawFlowView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var amount: String = ""
+    @State private var isProcessing = false
+    @State private var showError = false
+    @State private var errorMessage = ""
+    @State private var showSuccess = false
+    
     var body: some View {
         NavigationView {
-            VStack {
-                Text("Withdraw Flow")
-                Text("Coming Soon")
+            ZStack {
+                Color.backgroundPrimary.ignoresSafeArea()
+                
+                VStack(spacing: 24) {
+                    // Amount Input
+                    VStack(spacing: 12) {
+                        Text("Enter Amount to Withdraw")
+                            .font(.headline)
+                            .foregroundColor(.textPrimary)
+                        
+                        HStack {
+                            Text("$")
+                                .font(.system(size: 36, weight: .bold))
+                                .foregroundColor(.primaryPurple)
+                            
+                            TextField("0.00", text: $amount)
+                                .font(.system(size: 36, weight: .bold))
+                                .foregroundColor(.primaryPurple)
+                                .keyboardType(.decimalPad)
+                                .multilineTextAlignment(.center)
+                        }
+                        .padding()
+                        .background(Color.backgroundCard)
+                        .cornerRadius(12)
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.top, 40)
+                    
+                    Spacer()
+                    
+                    // Withdraw Button
+                    ForsaButton(
+                        "Withdraw Funds",
+                        style: .primary,
+                        size: .large,
+                        isDisabled: !isValidAmount,
+                        isLoading: isProcessing
+                    ) {
+                        Task {
+                            await processWithdrawal()
+                        }
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 40)
+                }
             }
             .navigationTitle("Withdraw Funds")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                    .foregroundColor(.primaryPurple)
+                }
+            }
+            .alert("Error", isPresented: $showError) {
+                Button("OK") { }
+            } message: {
+                Text(errorMessage)
+            }
+            .alert("Success!", isPresented: $showSuccess) {
+                Button("Done") {
+                    dismiss()
+                }
+            } message: {
+                Text("Your withdrawal of $\(amount) has been initiated.")
+            }
         }
+    }
+    
+    private var isValidAmount: Bool {
+        guard let value = Double(amount), value > 0 else { return false }
+        return true
+    }
+    
+    private func processWithdrawal() async {
+        guard let amountValue = Double(amount) else { return }
+        
+        isProcessing = true
+        
+        do {
+            guard let accountId = UserDefaults.standard.string(forKey: "alpaca_account_id") else {
+                throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No account found"])
+            }
+            
+            try await AlpacaTradingService.shared.withdrawFunds(accountId: accountId, amount: amountValue)
+            showSuccess = true
+        } catch {
+            errorMessage = "Withdrawal failed: \(error.localizedDescription)"
+            showError = true
+        }
+        
+        isProcessing = false
     }
 }
 
 struct DepositFlowView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var amount: String = ""
+    @State private var isProcessing = false
+    @State private var showError = false
+    @State private var errorMessage = ""
+    @State private var showSuccess = false
+    
     var body: some View {
         NavigationView {
-            VStack {
-                Text("Deposit Flow")
-                Text("Coming Soon")
+            ZStack {
+                Color.backgroundPrimary.ignoresSafeArea()
+                
+                VStack(spacing: 24) {
+                    // Amount Input
+                    VStack(spacing: 12) {
+                        Text("Enter Amount to Deposit")
+                            .font(.headline)
+                            .foregroundColor(.textPrimary)
+                        
+                        HStack {
+                            Text("$")
+                                .font(.system(size: 36, weight: .bold))
+                                .foregroundColor(.primaryPurple)
+                            
+                            TextField("0.00", text: $amount)
+                                .font(.system(size: 36, weight: .bold))
+                                .foregroundColor(.primaryPurple)
+                                .keyboardType(.decimalPad)
+                                .multilineTextAlignment(.center)
+                        }
+                        .padding()
+                        .background(Color.backgroundCard)
+                        .cornerRadius(12)
+                        
+                        Text("Funds will be available immediately in sandbox")
+                            .font(.caption)
+                            .foregroundColor(.textSecondary)
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.top, 40)
+                    
+                    // Quick Amount Buttons
+                    VStack(spacing: 12) {
+                        Text("Quick Select")
+                            .font(.callout)
+                            .foregroundColor(.textSecondary)
+                        
+                        HStack(spacing: 12) {
+                            ForEach([100, 500, 1000, 5000], id: \.self) { value in
+                                Button {
+                                    amount = "\(value)"
+                                } label: {
+                                    Text("$\(value)")
+                                        .font(.callout)
+                                        .fontWeight(.medium)
+                                        .foregroundColor(.primaryPurple)
+                                        .padding(.horizontal, 16)
+                                        .padding(.vertical, 10)
+                                        .background(Color.primaryPurple.opacity(0.1))
+                                        .cornerRadius(8)
+                                }
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 24)
+                    
+                    Spacer()
+                    
+                    // Deposit Button
+                    ForsaButton(
+                        "Deposit Funds",
+                        style: .primary,
+                        size: .large,
+                        isDisabled: !isValidAmount,
+                        isLoading: isProcessing
+                    ) {
+                        Task {
+                            await processDeposit()
+                        }
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 40)
+                }
             }
             .navigationTitle("Deposit Funds")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                    .foregroundColor(.primaryPurple)
+                }
+            }
+            .alert("Error", isPresented: $showError) {
+                Button("OK") { }
+            } message: {
+                Text(errorMessage)
+            }
+            .alert("Success!", isPresented: $showSuccess) {
+                Button("Done") {
+                    dismiss()
+                }
+            } message: {
+                Text("Your deposit of $\(amount) has been initiated successfully!")
+            }
         }
+    }
+    
+    private var isValidAmount: Bool {
+        guard let value = Double(amount), value > 0 else { return false }
+        return true
+    }
+    
+    private func processDeposit() async {
+        guard let amountValue = Double(amount) else { return }
+        
+        isProcessing = true
+        
+        do {
+            guard let accountId = UserDefaults.standard.string(forKey: "alpaca_account_id") else {
+                throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "No account found. Please sign up first."])
+            }
+            
+            try await AlpacaTradingService.shared.fundAccount(accountId: accountId, amount: amountValue)
+            showSuccess = true
+        } catch {
+            errorMessage = "Deposit failed: \(error.localizedDescription)"
+            showError = true
+        }
+        
+        isProcessing = false
     }
 }
 
