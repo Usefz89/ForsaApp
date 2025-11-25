@@ -14,71 +14,28 @@ class AlpacaTradingService: ObservableObject {
     private let apiKey = AppConfig.Alpaca.apiKey
     private let apiSecret = AppConfig.Alpaca.apiSecret
     private let brokerBaseURL = AppConfig.Alpaca.brokerBaseURL
-    private let tradingBaseURL = AppConfig.Alpaca.tradingBaseURL
     private let dataBaseURL = AppConfig.Alpaca.dataBaseURL
     
     @Published var isPlacingOrder = false
     @Published var currentAccount: AlpacaAccount?
     @Published var currentPositions: [AlpacaPosition] = []
     
-    // Mode Toggle: If true, we use Trading API endpoints (Single User). If false, Broker API (Sub-accounts).
-    private(set) var isTradingMode = false
-    
     private init() {}
     
-    // MARK: - Initialization & Mode Check
+    // MARK: - Initialization
     
-    /// Verifies keys and determines if we should use Trading API or Broker API
+    /// Verifies Broker API keys are valid
     func initializeSession() async -> Bool {
-        // For this specific implementation request, we are prioritizing Broker API.
-        // We assume the keys provided in AppConfig are Broker API keys.
-        
-        // 1. Try Broker API first
         if await checkBrokerAPI() {
-            print("Session Init: Verified Broker API Mode.")
-            isTradingMode = false
+            print("✅ Session Init: Broker API verified successfully.")
             return true
         }
         
-        // 2. If Broker check fails, fallback to Trading API check
-        // This handles cases where the user might still be using Paper Trading keys
-        if await checkTradingAPI() {
-            print("Session Init: Broker check failed, but verified Trading API Mode.")
-            isTradingMode = true
-            return true
-        }
-        
-        // 3. If both fail, default to Broker mode but log warning (as per user intent to reimplement as Broker)
-        print("Session Init: Verification failed or offline. Defaulting to Broker Mode.")
-        isTradingMode = false
-        return false
-    }
-    
-    private func checkTradingAPI() async -> Bool {
-        let url = URL(string: "\(tradingBaseURL)/account")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue(apiKey, forHTTPHeaderField: "APCA-API-KEY-ID")
-        request.setValue(apiSecret, forHTTPHeaderField: "APCA-API-SECRET-KEY")
-        
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            if let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) {
-                let account = try JSONDecoder().decode(AlpacaAccount.self, from: data)
-                await MainActor.run { self.currentAccount = account }
-                return true
-            }
-        } catch {
-            print("Trading API Check Failed: \(error)")
-        }
+        print("❌ Session Init: Broker API verification failed.")
         return false
     }
     
     private func checkBrokerAPI() async -> Bool {
-        // Broker API usually requires Basic Auth.
-        // Simple check: GET /v1/clock or /v1/assets (public-ish but auth required)
-        // Or just try to list accounts (requires admin scope).
-        // Let's try GET /v1/clock
         let url = URL(string: "\(brokerBaseURL)/clock")!
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
@@ -103,22 +60,12 @@ class AlpacaTradingService: ObservableObject {
     
     // MARK: - Account Management
     
-    /// Creates a new user account in Alpaca (Broker API Only)
+    /// Creates a new user account in Alpaca Broker API
     func createAccount(email: String, firstName: String, lastName: String) async throws -> String {
         print("📝 Starting Alpaca Account Creation...")
         print("   Email: \(email)")
         print("   Name: \(firstName) \(lastName)")
         
-        if isTradingMode {
-            // If in Trading Mode, we don't create accounts. We just return the existing Account ID.
-            print("⚠️ In Trading Mode - returning existing account")
-            if let account = currentAccount { return account.id }
-            // If nil, fetch it
-            _ = await checkTradingAPI()
-            return currentAccount?.id ?? ""
-        }
-        
-        // Broker API Flow
         let contact = AlpacaContact(
             email_address: email,
             phone_number: "+15555555555",
@@ -166,7 +113,7 @@ class AlpacaTradingService: ObservableObject {
         )
         
         let url = URL(string: "\(brokerBaseURL)/accounts")!
-        var request = try createRequest(url: url, method: "POST")
+        var request = try createBrokerRequest(url: url, method: "POST")
         
         let encoder = JSONEncoder()
         encoder.outputFormatting = .prettyPrinted
@@ -198,16 +145,11 @@ class AlpacaTradingService: ObservableObject {
         return account.id
     }
     
-    /// Fetches account details
+    /// Fetches account details for a sub-account
     func fetchAccountDetails(accountId: String) async throws -> AlpacaAccount {
-        let url: URL
-        if isTradingMode {
-            url = URL(string: "\(tradingBaseURL)/account")!
-        } else {
-            url = URL(string: "\(brokerBaseURL)/trading/accounts/\(accountId)/account")!
-        }
+        let url = URL(string: "\(brokerBaseURL)/trading/accounts/\(accountId)/account")!
         
-        let request = try createRequest(url: url, method: "GET")
+        let request = try createBrokerRequest(url: url, method: "GET")
         let (data, response) = try await URLSession.shared.data(for: request)
         try validateResponse(response, data: data)
         
@@ -221,7 +163,7 @@ class AlpacaTradingService: ObservableObject {
         print("🏦 Creating sandbox ACH relationship for account: \(accountId)")
         
         let url = URL(string: "\(brokerBaseURL)/accounts/\(accountId)/ach_relationships")!
-        var request = try createRequest(url: url, method: "POST")
+        var request = try createBrokerRequest(url: url, method: "POST")
         
         // Sandbox test bank details
         let body: [String: Any] = [
@@ -254,7 +196,7 @@ class AlpacaTradingService: ObservableObject {
     /// Gets existing ACH relationships
     func getACHRelationships(accountId: String) async throws -> [[String: Any]] {
         let url = URL(string: "\(brokerBaseURL)/accounts/\(accountId)/ach_relationships")!
-        let request = try createRequest(url: url, method: "GET")
+        let request = try createBrokerRequest(url: url, method: "GET")
         
         let (data, response) = try await URLSession.shared.data(for: request)
         try validateResponse(response, data: data)
@@ -268,11 +210,6 @@ class AlpacaTradingService: ObservableObject {
     /// Funds the account via ACH Transfer (Sandbox)
     func fundAccount(accountId: String, amount: Double) async throws {
         print("💰 Funding account \(accountId) with $\(amount)")
-        
-        if isTradingMode {
-            print("⚠️ Skipping funding in Trading Mode (Paper accounts are pre-funded)")
-            return
-        }
         
         guard amount > 0 else { return }
         
@@ -295,7 +232,7 @@ class AlpacaTradingService: ObservableObject {
         
         // Create transfer
         let url = URL(string: "\(brokerBaseURL)/accounts/\(accountId)/transfers")!
-        var request = try createRequest(url: url, method: "POST")
+        var request = try createBrokerRequest(url: url, method: "POST")
         
         let body: [String: Any] = [
             "transfer_type": "ach",
@@ -322,11 +259,6 @@ class AlpacaTradingService: ObservableObject {
     func withdrawFunds(accountId: String, amount: Double) async throws {
         print("💸 Withdrawing $\(amount) from account \(accountId)")
         
-        if isTradingMode {
-            print("⚠️ Withdrawals not supported in Trading Mode")
-            return
-        }
-        
         guard amount > 0 else { return }
         
         // Get existing ACH relationship
@@ -340,7 +272,7 @@ class AlpacaTradingService: ObservableObject {
         
         // Create withdrawal transfer
         let url = URL(string: "\(brokerBaseURL)/accounts/\(accountId)/transfers")!
-        var request = try createRequest(url: url, method: "POST")
+        var request = try createBrokerRequest(url: url, method: "POST")
         
         let body: [String: Any] = [
             "transfer_type": "ach",
@@ -366,7 +298,7 @@ class AlpacaTradingService: ObservableObject {
     /// Gets transfer history for an account
     func getTransfers(accountId: String) async throws -> [[String: Any]] {
         let url = URL(string: "\(brokerBaseURL)/accounts/\(accountId)/transfers")!
-        let request = try createRequest(url: url, method: "GET")
+        let request = try createBrokerRequest(url: url, method: "GET")
         
         let (data, response) = try await URLSession.shared.data(for: request)
         try validateResponse(response, data: data)
@@ -380,14 +312,9 @@ class AlpacaTradingService: ObservableObject {
     // MARK: - Trading
     
     func placeOrder(accountId: String, symbol: String, notional: Double) async throws {
-        let url: URL
-        if isTradingMode {
-            url = URL(string: "\(tradingBaseURL)/orders")!
-        } else {
-            url = URL(string: "\(brokerBaseURL)/trading/accounts/\(accountId)/orders")!
-        }
+        let url = URL(string: "\(brokerBaseURL)/trading/accounts/\(accountId)/orders")!
         
-        var request = try createRequest(url: url, method: "POST")
+        var request = try createBrokerRequest(url: url, method: "POST")
         
         let body: [String: Any] = [
             "symbol": symbol,
@@ -421,14 +348,9 @@ class AlpacaTradingService: ObservableObject {
     }
     
     func fetchPositions(accountId: String) async throws -> [AlpacaPosition] {
-        let url: URL
-        if isTradingMode {
-            url = URL(string: "\(tradingBaseURL)/positions")!
-        } else {
-            url = URL(string: "\(brokerBaseURL)/trading/accounts/\(accountId)/positions")!
-        }
+        let url = URL(string: "\(brokerBaseURL)/trading/accounts/\(accountId)/positions")!
         
-        let request = try createRequest(url: url, method: "GET")
+        let request = try createBrokerRequest(url: url, method: "GET")
         let (data, response) = try await URLSession.shared.data(for: request)
         try validateResponse(response, data: data)
         
@@ -438,12 +360,7 @@ class AlpacaTradingService: ObservableObject {
     }
     
     func fetchPortfolioHistory(accountId: String, period: String = "1M", timeframe: String = "1D") async throws -> [ChartDataPoint] {
-        let url: URL
-        if isTradingMode {
-            url = URL(string: "\(tradingBaseURL)/account/portfolio/history")!
-        } else {
-            url = URL(string: "\(brokerBaseURL)/trading/accounts/\(accountId)/account/portfolio/history")!
-        }
+        let url = URL(string: "\(brokerBaseURL)/trading/accounts/\(accountId)/account/portfolio/history")!
         
         var components = URLComponents(string: url.absoluteString)!
         components.queryItems = [
@@ -452,7 +369,7 @@ class AlpacaTradingService: ObservableObject {
         ]
         
         guard let finalUrl = components.url else { return [] }
-        let request = try createRequest(url: finalUrl, method: "GET")
+        let request = try createBrokerRequest(url: finalUrl, method: "GET")
         let (data, response) = try await URLSession.shared.data(for: request)
         try validateResponse(response, data: data)
         
@@ -480,8 +397,12 @@ class AlpacaTradingService: ObservableObject {
         let url = URL(string: "\(dataBaseURL)/stocks/\(symbol)/quotes/latest")!
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        request.setValue(apiKey, forHTTPHeaderField: "APCA-API-KEY-ID")
-        request.setValue(apiSecret, forHTTPHeaderField: "APCA-API-SECRET-KEY")
+        // Market Data API uses the same Basic Auth for Broker API
+        let loginString = "\(apiKey):\(apiSecret)"
+        if let loginData = loginString.data(using: .utf8) {
+            let base64LoginString = loginData.base64EncodedString()
+            request.setValue("Basic \(base64LoginString)", forHTTPHeaderField: "Authorization")
+        }
         
         let (data, response) = try await URLSession.shared.data(for: request)
         try validateResponse(response, data: data)
@@ -492,21 +413,15 @@ class AlpacaTradingService: ObservableObject {
     
     // MARK: - Helpers
     
-    private func createRequest(url: URL, method: String) throws -> URLRequest {
+    private func createBrokerRequest(url: URL, method: String) throws -> URLRequest {
         var request = URLRequest(url: url)
         request.httpMethod = method
         
-        if isTradingMode {
-            // Trading API Headers
-            request.setValue(apiKey, forHTTPHeaderField: "APCA-API-KEY-ID")
-            request.setValue(apiSecret, forHTTPHeaderField: "APCA-API-SECRET-KEY")
-        } else {
-            // Broker API Headers (Basic Auth)
-            let loginString = "\(apiKey):\(apiSecret)"
-            if let loginData = loginString.data(using: .utf8) {
-                let base64LoginString = loginData.base64EncodedString()
-                request.setValue("Basic \(base64LoginString)", forHTTPHeaderField: "Authorization")
-            }
+        // Broker API uses Basic Auth
+        let loginString = "\(apiKey):\(apiSecret)"
+        if let loginData = loginString.data(using: .utf8) {
+            let base64LoginString = loginData.base64EncodedString()
+            request.setValue("Basic \(base64LoginString)", forHTTPHeaderField: "Authorization")
         }
         
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")

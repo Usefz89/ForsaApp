@@ -623,7 +623,7 @@ struct DepositFlowView: View {
                                 .font(.callout)
                                 .foregroundColor(.textSecondary)
                             
-                            HStack(spacing: 12) {
+                            HStack(spacing: 8) {
                                 ForEach([50, 100, 250, 500], id: \.self) { value in
                                     Button {
                                         amountKWD = "\(value)"
@@ -637,8 +637,8 @@ struct DepositFlowView: View {
                                                 .foregroundColor(.textSecondary)
                                         }
                                         .foregroundColor(.primaryPurple)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 10)
+                                        .frame(maxWidth: .infinity)
+                                        .frame(height: 50)
                                         .background(Color.primaryPurple.opacity(0.1))
                                         .cornerRadius(8)
                                     }

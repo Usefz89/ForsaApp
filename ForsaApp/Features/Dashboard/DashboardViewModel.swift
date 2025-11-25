@@ -61,32 +61,21 @@ class DashboardViewModel: ObservableObject {
     
     @MainActor
     func checkAccountStatus() async {
-        // 1. Initialize Service (Check keys)
-        _ = await alpacaService.initializeSession()
+        // Initialize Broker API session
+        let isConnected = await alpacaService.initializeSession()
         
-        // Check the actual mode from the service (not the return value which indicates success)
-        if alpacaService.isTradingMode {
-            // Keys are for Trading API -> No creation needed
-            if let account = alpacaService.currentAccount {
-                self.accountId = account.id
-                UserDefaults.standard.set(account.id, forKey: "alpaca_account_id")
-            }
+        if !isConnected {
+            self.errorMessage = "Unable to connect to Alpaca. Please check your internet connection."
+        }
+        
+        // Check if we have a stored account ID
+        if let id = UserDefaults.standard.string(forKey: "alpaca_account_id") {
+            self.accountId = id
             self.needsAccountCreation = false
             await refreshData()
         } else {
-            // Broker Mode: Check if we have a stored ID
-            if let id = UserDefaults.standard.string(forKey: "alpaca_account_id") {
-                self.accountId = id
-                self.needsAccountCreation = false
-                await refreshData()
-            } else {
-                // If missing, we prompt creation (but user likely should have done this at signup)
-                // But for existing users or dev testing, we might still need this.
-                // However, user requested: "create account on the first page... then having create account button again in the home page. fix this."
-                // So we likely shouldn't show it if we can avoid it, OR the user means "remove the button".
-                // Let's keep the state logic but maybe the View won't show the button if we are clever.
-                self.needsAccountCreation = true
-            }
+            // No account ID stored - user needs to create an account
+            self.needsAccountCreation = true
         }
     }
     

@@ -190,31 +190,20 @@ class AppCoordinator: ObservableObject {
     func signUp(email: String, password: String, firstName: String, lastName: String) async throws {
         print("📝 Signing up new user: \(email)")
         
-        // 1. Initialize Alpaca Session
+        // 1. Initialize Alpaca Broker API Session
         let sessionVerified = await AlpacaTradingService.shared.initializeSession()
-        print("🔐 Session Verified: \(sessionVerified)")
-        print("🔐 Is Trading Mode: \(AlpacaTradingService.shared.isTradingMode)")
+        print("🔐 Broker API Session Verified: \(sessionVerified)")
         
         var alpacaAccountId: String?
         
-        // 2. Create or Link Alpaca Account
+        // 2. Create Alpaca Sub-Account via Broker API
         do {
-            if AlpacaTradingService.shared.isTradingMode {
-                print("📌 Using Trading Mode - linking existing account")
-                if let account = AlpacaTradingService.shared.currentAccount {
-                    alpacaAccountId = account.id
-                } else {
-                    _ = await AlpacaTradingService.shared.initializeSession()
-                    alpacaAccountId = AlpacaTradingService.shared.currentAccount?.id
-                }
-            } else {
-                print("📌 Using Broker Mode - creating new sub-account")
-                alpacaAccountId = try await AlpacaTradingService.shared.createAccount(
-                    email: email,
-                    firstName: firstName,
-                    lastName: lastName
-                )
-            }
+            print("📌 Creating new Alpaca sub-account...")
+            alpacaAccountId = try await AlpacaTradingService.shared.createAccount(
+                email: email,
+                firstName: firstName,
+                lastName: lastName
+            )
             
             // Save the Alpaca account ID
             if let id = alpacaAccountId {
