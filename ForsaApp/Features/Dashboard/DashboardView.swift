@@ -56,8 +56,21 @@ struct DashboardView: View {
             .refreshable {
                 await viewModel.refreshData()
             }
-            .sheet(isPresented: $showingAddFunds) {
-                DepositView(viewModel: viewModel)
+            .sheet(isPresented: $showingAddFunds, onDismiss: {
+                // Refresh data after deposit
+                Task {
+                    await viewModel.refreshData()
+                }
+            }) {
+                DepositFlowView()
+            }
+            .sheet(isPresented: $showingWithdraw, onDismiss: {
+                // Refresh data after withdraw
+                Task {
+                    await viewModel.refreshData()
+                }
+            }) {
+                WithdrawFlowView()
             }
         }
         .onAppear {
@@ -210,10 +223,10 @@ struct DashboardView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("Cash")
+                            Text("Available Balance")
                                 .font(.caption1)
                                 .foregroundColor(.textSecondary)
-                            Text(viewModel.cashBalanceText)
+                            Text(viewModel.availableBalanceText)
                                 .font(.subheadline)
                                 .fontWeight(.semibold)
                                 .foregroundColor(.textPrimary)
@@ -306,10 +319,10 @@ struct DashboardView: View {
                     NavigationLink(destination: CashReserveView()) {
                         HStack {
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("Available Cash")
+                                Text("Available Balance")
                                     .font(.callout)
                                     .foregroundColor(.textSecondary)
-                                Text(viewModel.cashBalanceText)
+                                Text(viewModel.availableBalanceText)
                                     .font(.title2)
                                     .fontWeight(.bold)
                                     .foregroundColor(.textPrimary)
@@ -359,65 +372,6 @@ struct DashboardView: View {
                     }
                 }
             }
-        }
-    }
-}
-
-// MARK: - Deposit View
-struct DepositView: View {
-    @ObservedObject var viewModel: DashboardViewModel
-    @Environment(\.presentationMode) var presentationMode
-    @State private var amountKD: String = ""
-    
-    var body: some View {
-        NavigationView {
-            VStack(spacing: 20) {
-                Text("Add Funds")
-                    .font(.title2)
-                    .fontWeight(.bold)
-                
-                VStack(alignment: .leading) {
-                    Text("Amount (KWD)")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                    
-                    TextField("0.00", text: $amountKD)
-                        .keyboardType(.decimalPad)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                        .font(.title3)
-                }
-                .padding()
-                
-                if let amount = Double(amountKD) {
-                    Text("Equivalent to \(CurrencyService.shared.formatUSD(CurrencyService.shared.convertKWDtoUSD(amount)))")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                
-                Button(action: {
-                    if let amount = Double(amountKD) {
-                        Task {
-                            await viewModel.depositFunds(amountKD: amount)
-                            presentationMode.wrappedValue.dismiss()
-                        }
-                    }
-                }) {
-                    Text("Deposit")
-                        .fontWeight(.semibold)
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.primaryGreen)
-                        .cornerRadius(10)
-                }
-                .disabled(amountKD.isEmpty || Double(amountKD) == nil)
-                
-                Spacer()
-            }
-            .padding()
-            .navigationBarItems(trailing: Button("Close") {
-                presentationMode.wrappedValue.dismiss()
-            })
         }
     }
 }

@@ -51,6 +51,10 @@ class DashboardViewModel: ObservableObject {
         currencyService.formatUSD(cashBalance)
     }
     
+    var availableBalanceText: String {
+        currencyService.formatUSD(cashBalance)
+    }
+    
     init() {
         Task { await checkAccountStatus() }
     }
@@ -58,9 +62,10 @@ class DashboardViewModel: ObservableObject {
     @MainActor
     func checkAccountStatus() async {
         // 1. Initialize Service (Check keys)
-        let isTradingMode = await alpacaService.initializeSession()
+        _ = await alpacaService.initializeSession()
         
-        if isTradingMode {
+        // Check the actual mode from the service (not the return value which indicates success)
+        if alpacaService.isTradingMode {
             // Keys are for Trading API -> No creation needed
             if let account = alpacaService.currentAccount {
                 self.accountId = account.id
