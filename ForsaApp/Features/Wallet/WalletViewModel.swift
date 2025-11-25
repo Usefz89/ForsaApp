@@ -1,5 +1,5 @@
 //
-//  CashReserveViewModel.swift
+//  WalletViewModel.swift
 //  ForsaApp
 //
 //  Created by Yousef Zuriqi on 9/24/25.
@@ -21,13 +21,14 @@ class CashReserveViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var refreshing = false
     @Published var errorMessage: String?
+    @Published var hasLoadedOnce = false
     
     private let alpacaService = AlpacaTradingService.shared
 
-    // Buying power from Alpaca
     @Published var buyingPower: Double = 0
     
-    // Computed properties
+    // MARK: - Computed Properties
+    
     var pendingAmount: Double {
         pendingTransactions.reduce(0) { $0 + $1.netAmount }
     }
@@ -52,8 +53,9 @@ class CashReserveViewModel: ObservableObject {
         !allTransactions.isEmpty
     }
 
+    // MARK: - Init
+    
     init() {
-        // Initialize with empty account - will be populated from Alpaca
         self.cashAccount = CashAccount(
             userId: UUID(),
             balance: 0,
@@ -63,6 +65,8 @@ class CashReserveViewModel: ObservableObject {
         )
     }
 
+    // MARK: - Public Methods
+    
     func loadData() {
         Task {
             await fetchAlpacaAccountData()
@@ -75,10 +79,27 @@ class CashReserveViewModel: ObservableObject {
         refreshing = false
     }
     
+    func showDepositFlow() {
+        showingDepositFlow = true
+    }
+
+    func showWithdrawFlow() {
+        showingWithdrawFlow = true
+    }
+
+    func handleDepositCompleted(_ transaction: DepositTransaction) {
+        Task {
+            await fetchAlpacaAccountData()
+        }
+    }
+    
+    // MARK: - Private Methods
+    
     private func fetchAlpacaAccountData() async {
         guard let accountId = UserDefaults.standard.string(forKey: "alpaca_account_id") else {
             print("❌ No Alpaca account ID found")
             errorMessage = "No account found. Please sign up first."
+            hasLoadedOnce = true
             return
         }
         
@@ -86,7 +107,6 @@ class CashReserveViewModel: ObservableObject {
         errorMessage = nil
         
         do {
-            // 1. Fetch Account Details from Alpaca
             print("📊 Fetching Alpaca account details...")
             let account = try await alpacaService.fetchAccountDetails(accountId: accountId)
             
@@ -96,10 +116,8 @@ class CashReserveViewModel: ObservableObject {
             print("💰 Cash Balance: $\(cashValue)")
             print("💳 Buying Power: $\(buyingPowerValue)")
             
-            // Store buying power
             self.buyingPower = buyingPowerValue
             
-            // 2. Fetch Transfer History from Alpaca to calculate totals
             print("📋 Fetching transfer history...")
             let transfers = try await alpacaService.getTransfers(accountId: accountId)
             
@@ -116,11 +134,9 @@ class CashReserveViewModel: ObservableObject {
                 
                 print("📝 Transfer: amount=$\(amount), direction=\(direction), status=\(status)")
                 
-                // Parse date
                 let dateFormatter = ISO8601DateFormatter()
                 let createdAt = dateFormatter.date(from: createdAtString) ?? Date()
                 
-                // Determine transaction currency based on conversion
                 let transaction = DepositTransaction(
                     accountId: self.cashAccount.id,
                     amount: amount,
@@ -130,12 +146,9 @@ class CashReserveViewModel: ObservableObject {
                     createdAt: createdAt
                 )
                 
-                // Calculate totals from completed transfers only
-                // Alpaca transfer statuses: QUEUED, PENDING, SENT_TO_CLEARING, APPROVED, COMPLETE, CANCELED, REJECTED
                 switch status.uppercased() {
                 case "COMPLETE", "APPROVED":
                     completed.append(transaction)
-                    // Track deposits vs withdrawals
                     if direction.uppercased() == "INCOMING" {
                         totalDeposited += amount
                     } else {
@@ -144,13 +157,10 @@ class CashReserveViewModel: ObservableObject {
                 case "QUEUED", "PENDING", "SENT_TO_CLEARING":
                     pending.append(transaction)
                 default:
-                    // Skip cancelled, rejected, etc.
                     print("⏭️ Skipping transfer with status: \(status)")
                 }
             }
             
-            // Update cash account with real data from API
-            // The cash balance from Alpaca is the source of truth
             self.cashAccount = CashAccount(
                 id: self.cashAccount.id,
                 userId: self.cashAccount.userId,
@@ -173,26 +183,15 @@ class CashReserveViewModel: ObservableObject {
             print("✅ Loaded \(completed.count) completed and \(pending.count) pending transfers")
             print("💰 Total Deposited: $\(totalDeposited), Total Withdrawn: $\(totalWithdrawn)")
             
+            hasLoadedOnce = true
+            
         } catch {
             print("❌ Failed to fetch Alpaca data: \(error)")
             errorMessage = "Failed to load account data"
+            hasLoadedOnce = true
         }
         
         isLoading = false
     }
-
-    func showDepositFlow() {
-        showingDepositFlow = true
-    }
-
-    func showWithdrawFlow() {
-        showingWithdrawFlow = true
-    }
-
-    func handleDepositCompleted(_ transaction: DepositTransaction) {
-        // Refresh data from Alpaca after deposit
-        Task {
-            await fetchAlpacaAccountData()
-        }
-    }
 }
+

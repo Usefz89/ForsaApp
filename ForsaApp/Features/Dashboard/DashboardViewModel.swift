@@ -19,6 +19,7 @@ class DashboardViewModel: ObservableObject {
     @Published var selectedTimeframe: TimeFrame = .oneWeek
     @Published var isLoading = false
     @Published var errorMessage: String?
+    @Published var hasLoadedOnce = false  // Track if we've loaded data at least once
     
     // Alpaca Integration
     @Published var accountId: String?
@@ -88,6 +89,7 @@ class DashboardViewModel: ObservableObject {
         } else {
             // No account ID stored - user needs to create an account
             self.needsAccountCreation = true
+            self.hasLoadedOnce = true  // No data to load, mark as complete
         }
     }
     
@@ -161,9 +163,12 @@ class DashboardViewModel: ObservableObject {
             )
             self.chartData = points
             
+            hasLoadedOnce = true
+            
         } catch {
             self.errorMessage = "Failed to load data: \(error.localizedDescription)"
             print("Dashboard Data Error: \(error)")
+            hasLoadedOnce = true  // Mark as loaded even on error
         }
         
         isLoading = false

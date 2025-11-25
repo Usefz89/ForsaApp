@@ -8,6 +8,9 @@
 import Foundation
 
 struct AppConfig {
+    // Environment: "sandbox" or "production"
+    static let alpacaEnvironment = "sandbox"
+    
     struct Alpaca {
         // MARK: - WARNING: NEVER STORE SECRETS IN CLIENT CODE IN PRODUCTION
         // These should be fetched from a secure backend or injected at build time.

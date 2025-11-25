@@ -19,6 +19,12 @@ struct TabBarView: View {
                 }
                 .tag(Tab.portfolio)
 
+            WalletView()
+                .tabItem {
+                    Image(systemName: selectedTab == .wallet ? "wallet.pass.fill" : "wallet.pass")
+                    Text("Wallet")
+                }
+                .tag(Tab.wallet)
 
             ZakatView()
                 .tabItem {
@@ -67,12 +73,14 @@ struct TabBarView: View {
 
 enum Tab: String, CaseIterable {
     case portfolio = "portfolio"
+    case wallet = "wallet"
     case zakat = "zakat"
     case profile = "profile"
 
     var title: String {
         switch self {
         case .portfolio: return "Portfolio"
+        case .wallet: return "Wallet"
         case .zakat: return "Zakat"
         case .profile: return "Profile"
         }
@@ -81,6 +89,7 @@ enum Tab: String, CaseIterable {
     var iconName: String {
         switch self {
         case .portfolio: return "chart.pie"
+        case .wallet: return "wallet.pass"
         case .zakat: return "heart"
         case .profile: return "person.crop.circle"
         }
@@ -89,6 +98,7 @@ enum Tab: String, CaseIterable {
     var selectedIconName: String {
         switch self {
         case .portfolio: return "chart.pie.fill"
+        case .wallet: return "wallet.pass.fill"
         case .zakat: return "heart.fill"
         case .profile: return "person.crop.circle.fill"
         }
