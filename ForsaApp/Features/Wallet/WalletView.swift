@@ -11,8 +11,9 @@ struct WalletView: View {
     @EnvironmentObject var coordinator: AppCoordinator
     @StateObject private var viewModel = CashReserveViewModel()
     
+    /// Check if user is using a demo account (not a real signed-up user)
     private var isDemoAccount: Bool {
-        AppConfig.alpacaEnvironment == "sandbox"
+        coordinator.currentUser?.isDemoAccount ?? false
     }
 
     var body: some View {

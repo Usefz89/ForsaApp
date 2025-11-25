@@ -37,6 +37,11 @@ struct User: Identifiable, Codable {
         let lastInitial = lastName.prefix(1).uppercased()
         return "\(firstInitial)\(lastInitial)"
     }
+    
+    /// Check if this is a demo account (not a real user)
+    var isDemoAccount: Bool {
+        email == "demo@forsa.app"
+    }
 
     init(id: UUID = UUID(), email: String, firstName: String, lastName: String, profileImageURL: String? = nil, isVerified: Bool = false, createdAt: Date = Date(), totalPortfolioValue: Double = 0, totalGainLoss: Double = 0, totalGainLossPercentage: Double = 0, followersCount: Int = 0, followingCount: Int = 0, isPublicProfile: Bool = false, cashBalance: Double = 0, hasCompletedKYC: Bool = false, psychologicalRiskScore: Int? = nil, goals: [Goal] = []) {
         self.id = id
