@@ -122,7 +122,7 @@ struct CashReserveView: View {
                                 .font(.caption1)
                                 .foregroundColor(.textSecondary)
 
-                            Text("KWD \(String(format: "%.0f", viewModel.cashAccount.availableDailyLimit))")
+                            Text("$\(String(format: "%.0f", viewModel.cashAccount.availableDailyLimit))")
                                 .font(.caption1)
                                 .fontWeight(.medium)
                                 .foregroundColor(.textPrimary)
@@ -135,7 +135,7 @@ struct CashReserveView: View {
                                 .font(.caption1)
                                 .foregroundColor(.textSecondary)
 
-                            Text("KWD \(String(format: "%.0f", viewModel.cashAccount.availableMonthlyLimit))")
+                            Text("$\(String(format: "%.0f", viewModel.cashAccount.availableMonthlyLimit))")
                                 .font(.caption1)
                                 .fontWeight(.medium)
                                 .foregroundColor(.textPrimary)
@@ -168,14 +168,14 @@ struct CashReserveView: View {
                 VStack(spacing: 12) {
                     AccountOverviewRow(
                         title: "Total Deposited",
-                        value: "KWD \(String(format: "%.2f", viewModel.cashAccount.totalDeposited))",
+                        value: "$\(String(format: "%.2f", viewModel.cashAccount.totalDeposited))",
                         icon: "arrow.down.circle.fill",
                         color: .primaryGreen
                     )
 
                     AccountOverviewRow(
                         title: "Total Withdrawn",
-                        value: "KWD \(String(format: "%.2f", viewModel.cashAccount.totalWithdrawn))",
+                        value: "$\(String(format: "%.2f", viewModel.cashAccount.totalWithdrawn))",
                         icon: "arrow.up.circle.fill",
                         color: .primaryBlue
                     )

@@ -30,7 +30,10 @@ struct CashAccount: Identifiable, Codable {
     }
 
     var formattedBalance: String {
-        "KWD \(String(format: "%.3f", balance))"
+        if currency == "USD" {
+            return "$\(String(format: "%.2f", balance))"
+        }
+        return "KWD \(String(format: "%.3f", balance))"
     }
 
     var todaysDeposits: Double {
@@ -74,15 +77,24 @@ struct DepositTransaction: Identifiable, Codable {
     let completedAt: Date?
 
     var formattedAmount: String {
-        "KWD \(String(format: "%.3f", amount))"
+        if currency == "USD" {
+            return "$\(String(format: "%.2f", amount))"
+        }
+        return "KWD \(String(format: "%.3f", amount))"
     }
 
     var formattedNetAmount: String {
-        "KWD \(String(format: "%.3f", netAmount))"
+        if currency == "USD" {
+            return "$\(String(format: "%.2f", netAmount))"
+        }
+        return "KWD \(String(format: "%.3f", netAmount))"
     }
 
     var formattedFee: String {
-        "KWD \(String(format: "%.3f", processingFee))"
+        if currency == "USD" {
+            return "$\(String(format: "%.2f", processingFee))"
+        }
+        return "KWD \(String(format: "%.3f", processingFee))"
     }
 
     init(id: UUID = UUID(), accountId: UUID, amount: Double, currency: String = "KWD", paymentMethod: PaymentMethod, processingFee: Double = 0, estimatedSettlementTime: String, createdAt: Date = Date(), completedAt: Date? = nil) {

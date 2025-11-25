@@ -108,20 +108,24 @@ class AppCoordinator: ObservableObject {
     func signIn(email: String, password: String) async throws {
         print("🔐 Signing in user: \(email)")
         
-        // 1. Check if we have a saved Alpaca account for this email
+        // 1. Check if we have a saved account for this email
         let savedEmail = UserDefaults.standard.string(forKey: StorageKeys.userEmail)
         let savedPassword = UserDefaults.standard.string(forKey: StorageKeys.userPassword)
+        let savedFirstName = UserDefaults.standard.string(forKey: "user_first_name")
+        let savedLastName = UserDefaults.standard.string(forKey: "user_last_name")
+        
+        print("📝 Saved email: \(savedEmail ?? "none"), Saved name: \(savedFirstName ?? "none") \(savedLastName ?? "none")")
         
         // 2. Initialize Alpaca session
         let sessionVerified = await AlpacaTradingService.shared.initializeSession()
         print("🔐 Alpaca Session Verified: \(sessionVerified)")
         
-        // 3. Check if this email matches a saved account
+        // 3. Check if this email matches a saved account with correct password
         if savedEmail == email && savedPassword == password {
             // Returning user - restore their session
             if let savedUserData = UserDefaults.standard.data(forKey: StorageKeys.savedUser),
                let savedUser = try? JSONDecoder().decode(User.self, from: savedUserData) {
-                print("✅ Credentials match saved user")
+                print("✅ Credentials match saved user: \(savedUser.firstName) \(savedUser.lastName)")
                 
                 await MainActor.run {
                     self.currentUser = savedUser
@@ -132,10 +136,8 @@ class AppCoordinator: ObservableObject {
             }
         }
         
-        // 4. For new sign-in or mismatched credentials, check if account exists
-        // In a real app, you'd verify against a backend. For now, we'll check Alpaca.
+        // 4. For sign-in with saved email but different password, still check if account exists
         guard let accountId = UserDefaults.standard.string(forKey: StorageKeys.alpacaAccountId) else {
-            // No saved account - user needs to sign up first
             throw NSError(domain: "AuthError", code: 404, 
                          userInfo: [NSLocalizedDescriptionKey: "No account found. Please sign up first."])
         }
@@ -145,11 +147,17 @@ class AppCoordinator: ObservableObject {
             let account = try await AlpacaTradingService.shared.fetchAccountDetails(accountId: accountId)
             print("✅ Alpaca account verified: \(account.id)")
             
-            // Create user from saved data or email
+            // Use saved name if email matches, otherwise extract from email
+            let firstName = savedFirstName ?? email.components(separatedBy: "@").first?.capitalized ?? "User"
+            let lastName = savedLastName ?? ""
+            
+            print("📝 Using name: \(firstName) \(lastName)")
+            
+            // Create user with proper name
             let user = User(
                 email: email,
-                firstName: savedEmail == email ? (UserDefaults.standard.string(forKey: "user_first_name") ?? "User") : "User",
-                lastName: savedEmail == email ? (UserDefaults.standard.string(forKey: "user_last_name") ?? "") : "",
+                firstName: firstName,
+                lastName: lastName,
                 isVerified: true,
                 totalPortfolioValue: account.equityValue,
                 totalGainLoss: 0,
