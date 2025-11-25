@@ -16,6 +16,7 @@ class AppCoordinator: ObservableObject {
     @Published var isInvestingPortfolio = false
     @Published var portfolioInvestmentResult: PortfolioInvestmentResult?
     @Published var showInvestmentResult = false
+    @Published private(set) var selectedPortfolio: RiskLevel?
     
     // MARK: - UserDefaults Keys
     private enum StorageKeys {
@@ -28,7 +29,15 @@ class AppCoordinator: ObservableObject {
     }
 
     init() {
+        loadSelectedPortfolio()
         checkAuthenticationStatus()
+    }
+    
+    private func loadSelectedPortfolio() {
+        if let portfolioRaw = UserDefaults.standard.string(forKey: StorageKeys.selectedPortfolio),
+           let portfolio = RiskLevel(rawValue: portfolioRaw) {
+            selectedPortfolio = portfolio
+        }
     }
 
     private func checkAuthenticationStatus() {
@@ -51,6 +60,11 @@ class AppCoordinator: ObservableObject {
                         self.currentUser = savedUser
                         self.isAuthenticated = true
                         self.hasCompletedKYC = savedUser.hasCompletedKYC
+                        // Load portfolio from UserDefaults or fallback to first goal
+                        self.loadSelectedPortfolio()
+                        if self.selectedPortfolio == nil {
+                            self.selectedPortfolio = savedUser.goals.first?.assignedPortfolio
+                        }
                         self.isLoading = false
                     }
                 }
@@ -104,6 +118,7 @@ class AppCoordinator: ObservableObject {
         UserDefaults.standard.removeObject(forKey: StorageKeys.alpacaAccountId)
         UserDefaults.standard.removeObject(forKey: StorageKeys.userEmail)
         UserDefaults.standard.removeObject(forKey: StorageKeys.userPassword)
+        UserDefaults.standard.removeObject(forKey: StorageKeys.selectedPortfolio)
         // Also clear user name keys
         UserDefaults.standard.removeObject(forKey: "user_first_name")
         UserDefaults.standard.removeObject(forKey: "user_last_name")
@@ -138,6 +153,11 @@ class AppCoordinator: ObservableObject {
                     self.currentUser = savedUser
                     self.isAuthenticated = true
                     self.hasCompletedKYC = savedUser.hasCompletedKYC
+                    // Load portfolio from UserDefaults or fallback to first goal
+                    self.loadSelectedPortfolio()
+                    if self.selectedPortfolio == nil {
+                        self.selectedPortfolio = savedUser.goals.first?.assignedPortfolio
+                    }
                 }
                 return
             }
@@ -291,6 +311,7 @@ class AppCoordinator: ObservableObject {
         print("👋 Signing out...")
         clearSavedSession()
         currentUser = nil
+        selectedPortfolio = nil
         isAuthenticated = false
         hasCompletedKYC = false
     }
@@ -338,7 +359,10 @@ class AppCoordinator: ObservableObject {
             goals: updatedGoals
         )
         
-        // Save selected portfolio preference
+        // Update the @Published property (this triggers UI refresh)
+        selectedPortfolio = goal.assignedPortfolio
+        
+        // Save selected portfolio preference to UserDefaults
         UserDefaults.standard.set(goal.assignedPortfolio.rawValue, forKey: StorageKeys.selectedPortfolio)
         
         // Update saved user
@@ -349,16 +373,6 @@ class AppCoordinator: ObservableObject {
     }
     
     // MARK: - Portfolio Investment
-    
-    /// Get the user's selected portfolio
-    var selectedPortfolio: RiskLevel? {
-        if let portfolioRaw = UserDefaults.standard.string(forKey: StorageKeys.selectedPortfolio),
-           let portfolio = RiskLevel(rawValue: portfolioRaw) {
-            return portfolio
-        }
-        // Fallback to first goal's portfolio
-        return currentUser?.goals.first?.assignedPortfolio
-    }
     
     /// Get the Alpaca account ID
     var alpacaAccountId: String? {
@@ -435,6 +449,9 @@ class AppCoordinator: ObservableObject {
     /// Updates the user's selected portfolio
     func updateSelectedPortfolio(_ portfolio: RiskLevel) {
         print("📊 Updating selected portfolio to: \(portfolio.title)")
+        
+        // Update the @Published property (this triggers UI refresh)
+        selectedPortfolio = portfolio
         
         // Save to UserDefaults
         UserDefaults.standard.set(portfolio.rawValue, forKey: StorageKeys.selectedPortfolio)
