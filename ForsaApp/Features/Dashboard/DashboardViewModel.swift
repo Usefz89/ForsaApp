@@ -43,18 +43,19 @@ class DashboardViewModel: ObservableObject {
     }
     
     var portfolioChangeText: String {
-        let sign = totalGainLoss >= 0 ? "+" : ""
+        let sign = totalGainLoss >= 0 ? "+" : "-"
         let amount = currencyService.formatUSD(abs(totalGainLoss))
         let percentage = String(format: "%.2f", abs(totalGainLossPercentage))
         return "\(sign)\(amount) (\(sign)\(percentage)%)"
     }
     
     var totalGainLossText: String {
-        let sign = totalGainLoss >= 0 ? "+" : ""
+        let sign = totalGainLoss >= 0 ? "+" : "-"
         return "\(sign)\(currencyService.formatUSD(abs(totalGainLoss)))"
     }
     
     var portfolioValueText: String {
+        // Show actual portfolio value (can be negative)
         currencyService.formatUSD(totalPortfolioValue)
     }
     
@@ -118,29 +119,39 @@ class DashboardViewModel: ObservableObject {
         do {
             // 1. Fetch Account Details
             let account = try await alpacaService.fetchAccountDetails(accountId: accountId)
-            self.totalPortfolioValue = account.equityValue
             self.cashBalance = account.cashValue
-            // Buying power or other stats can be added
             
-            // 2. Fetch Positions to calculate Total Invested (Cost Basis)
+            // 2. Fetch Positions to calculate Total Invested (Cost Basis) and Market Value
             let fetchedPositions = try await alpacaService.fetchPositions(accountId: accountId)
             self.positions = fetchedPositions
+            
+            // Calculate totals from positions
             let totalCostBasis = fetchedPositions.reduce(0.0) { $0 + (Double($1.costBasis) ?? 0) }
+            let totalMarketValue = fetchedPositions.reduce(0.0) { $0 + (Double($1.marketValue ?? "0") ?? 0) }
+            
             self.totalInvested = totalCostBasis
             
-            // Calculate Gain/Loss
-            // Equity - Cost Basis (approximate, doesn't account for realized gains/losses fully in this simple view)
-            // Better to use Account's equity - cash? No.
-            // Total Gain/Loss usually comes from (Equity - Net Deposits).
-            // For simplicity in this MVP, we compare Current Equity vs Cost Basis of open positions + Cash? No.
-            // We will use (Equity - TotalInvested) if we assume Cash is uninvested.
-            // Actually, let's rely on positions for "Unrealized P&L" which is what users usually see for "Portfolio Performance".
-            // Or use Alpaca's `equity - last_equity` for day change.
+            // Total Portfolio Value = Market Value of Positions + Cash
+            // If account.equityValue is available and > 0, use it; otherwise calculate from positions
+            let accountEquity = account.equityValue
+            if accountEquity > 0 {
+                self.totalPortfolioValue = accountEquity
+            } else {
+                // Calculate from positions + cash
+                self.totalPortfolioValue = totalMarketValue + self.cashBalance
+            }
             
-            // Let's sum up Unrealized PL from positions
-            let unrealizedPL = fetchedPositions.reduce(0.0) { $0 + ((Double($1.marketValue ?? "0") ?? 0) - (Double($1.costBasis) ?? 0)) }
+            // Calculate Gain/Loss (Unrealized P&L from positions)
+            let unrealizedPL = totalMarketValue - totalCostBasis
             self.totalGainLoss = unrealizedPL
             self.totalGainLossPercentage = totalCostBasis > 0 ? (unrealizedPL / totalCostBasis) * 100 : 0
+            
+            print("📊 Portfolio Summary:")
+            print("   Cash: $\(String(format: "%.2f", self.cashBalance))")
+            print("   Invested (Cost Basis): $\(String(format: "%.2f", totalCostBasis))")
+            print("   Market Value: $\(String(format: "%.2f", totalMarketValue))")
+            print("   Total Portfolio Value: $\(String(format: "%.2f", self.totalPortfolioValue))")
+            print("   Gain/Loss: $\(String(format: "%.2f", unrealizedPL))")
             
             // 3. Fetch History for Chart
             let points = try await alpacaService.fetchPortfolioHistory(

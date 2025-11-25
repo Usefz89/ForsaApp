@@ -15,8 +15,12 @@ struct AlpacaAccount: Codable, Identifiable {
     let status: String?
     let currency: String?
     let lastEquity: String?
+    let equity: String?           // Current equity value
     let cash: String?
     let buyingPower: String?
+    let portfolioValue: String?   // Portfolio value
+    let longMarketValue: String?  // Total market value of long positions
+    let shortMarketValue: String? // Total market value of short positions
     let createdAt: String?
     
     enum CodingKeys: String, CodingKey {
@@ -25,15 +29,29 @@ struct AlpacaAccount: Codable, Identifiable {
         case status
         case currency
         case lastEquity = "last_equity"
+        case equity
         case cash
         case buyingPower = "buying_power"
+        case portfolioValue = "portfolio_value"
+        case longMarketValue = "long_market_value"
+        case shortMarketValue = "short_market_value"
         case createdAt = "created_at"
     }
     
     // Helpers to convert string values to Double
-    var equityValue: Double { Double(lastEquity ?? "0") ?? 0.0 }
+    // Use equity first, then lastEquity, then calculate from positions
+    var equityValue: Double {
+        if let eq = equity, let val = Double(eq), val > 0 { return val }
+        if let lastEq = lastEquity, let val = Double(lastEq), val > 0 { return val }
+        if let pv = portfolioValue, let val = Double(pv), val > 0 { return val }
+        // Fallback: calculate from long positions + cash
+        let longVal = Double(longMarketValue ?? "0") ?? 0.0
+        let cashVal = Double(cash ?? "0") ?? 0.0
+        return longVal + cashVal
+    }
     var cashValue: Double { Double(cash ?? "0") ?? 0.0 }
     var buyingPowerValue: Double { Double(buyingPower ?? "0") ?? 0.0 }
+    var longMarketValueValue: Double { Double(longMarketValue ?? "0") ?? 0.0 }
 }
 
 struct AlpacaPosition: Codable, Identifiable {
