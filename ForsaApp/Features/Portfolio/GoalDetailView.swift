@@ -133,7 +133,9 @@ struct AddFundsView: View {
                 Button(action: {
                     Task {
                         isProcessing = true
-                        try? await tradingService.placeBasketOrder(amount: amount, portfolio: portfolio)
+                        if let accountId = UserDefaults.standard.string(forKey: "alpaca_account_id") {
+                            try? await tradingService.placeBasketOrder(accountId: accountId, amount: amount, portfolio: portfolio)
+                        }
                         isProcessing = false
                         presentationMode.wrappedValue.dismiss()
                     }

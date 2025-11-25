@@ -10,12 +10,32 @@ import Charts
 
 struct PortfolioDetailView: View {
     let risk: RiskLevel
+    @StateObject private var viewModel = PortfolioDetailViewModel()
+    @State private var showingInvestSheet = false
     @Environment(\.presentationMode) var presentationMode
     
     var body: some View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 24) {
+                    if let success = viewModel.successMessage {
+                        Text(success)
+                            .font(.caption)
+                            .foregroundColor(.green)
+                            .padding()
+                            .background(Color.green.opacity(0.1))
+                            .cornerRadius(8)
+                    }
+                    
+                    if let error = viewModel.errorMessage {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundColor(.red)
+                            .padding()
+                            .background(Color.red.opacity(0.1))
+                            .cornerRadius(8)
+                    }
+                    
                     // Header
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
@@ -225,6 +245,7 @@ struct PortfolioDetailView: View {
                         
                         ZStack {
                             RoundedRectangle(cornerRadius: 12)
+                            
                                 .fill(Color.white)
                                 .frame(height: 220)
                                 .shadow(color: Color.black.opacity(0.05), radius: 4)
@@ -260,9 +281,9 @@ struct PortfolioDetailView: View {
                     
                     // Confirm Button
                     Button(action: {
-                        // Logic to confirm
+                        showingInvestSheet = true
                     }) {
-                        Text("Create your wallet now")
+                        Text("Invest in this portfolio")
                             .font(.headline)
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
@@ -275,6 +296,93 @@ struct PortfolioDetailView: View {
                 .padding(.bottom, 40)
             }
             .navigationBarHidden(true)
+            .onAppear {
+                Task {
+                    await viewModel.loadAccountData()
+                }
+            }
+            .sheet(isPresented: $showingInvestSheet) {
+                InvestSheet(viewModel: viewModel, riskLevel: risk)
+            }
+        }
+    }
+}
+
+struct InvestSheet: View {
+    @ObservedObject var viewModel: PortfolioDetailViewModel
+    let riskLevel: RiskLevel
+    @Environment(\.presentationMode) var presentationMode
+    @State private var amountKD: String = ""
+    
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 20) {
+                Text("Invest in \(riskLevel.title)")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .multilineTextAlignment(.center)
+                
+                VStack(alignment: .leading) {
+                    Text("Amount to Invest (KWD)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    
+                    TextField("0.00", text: $amountKD)
+                        .keyboardType(.decimalPad)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .font(.title3)
+                }
+                .padding()
+                
+                if let amount = Double(amountKD) {
+                    VStack(spacing: 4) {
+                        Text("Equivalent to")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text(CurrencyService.shared.formatUSD(CurrencyService.shared.convertKWDtoUSD(amount)))
+                            .font(.headline)
+                            .foregroundColor(.primary)
+                    }
+                }
+                
+                if let error = viewModel.errorMessage {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundColor(.red)
+                        .padding()
+                }
+                
+                Button(action: {
+                    if let amount = Double(amountKD) {
+                        Task {
+                            await viewModel.invest(amountKD: amount, riskLevel: riskLevel)
+                            if viewModel.errorMessage == nil {
+                                presentationMode.wrappedValue.dismiss()
+                            }
+                        }
+                    }
+                }) {
+                    if viewModel.isInvesting {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    } else {
+                        Text("Confirm Investment")
+                    }
+                }
+                .font(.headline)
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding()
+                .background(Color.primaryGreen)
+                .cornerRadius(10)
+                .disabled(amountKD.isEmpty || Double(amountKD) == nil || viewModel.isInvesting)
+                
+                Spacer()
+            }
+            .padding()
+            .navigationBarItems(trailing: Button("Cancel") {
+                presentationMode.wrappedValue.dismiss()
+            })
         }
     }
 }

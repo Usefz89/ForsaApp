@@ -18,6 +18,19 @@ struct DashboardView: View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 24) {
+                    if let error = viewModel.errorMessage {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundColor(.red)
+                            .padding()
+                            .background(Color.red.opacity(0.1))
+                            .cornerRadius(8)
+                    }
+                    
+                    if viewModel.needsAccountCreation {
+                        createAccountCard
+                    }
+                    
                     // Header with user greeting
                     headerView
 
@@ -36,11 +49,57 @@ struct DashboardView: View {
             .background(Color.backgroundPrimary)
             .navigationBarHidden(true)
             .refreshable {
-                await viewModel.refreshData(user: coordinator.currentUser)
+                await viewModel.refreshData()
+            }
+            .sheet(isPresented: $showingAddFunds) {
+                DepositView(viewModel: viewModel)
             }
         }
         .onAppear {
-            viewModel.loadData(user: coordinator.currentUser)
+            viewModel.checkAccountStatus()
+        }
+        .overlay(isLoadingOverlay)
+    }
+    
+    private var isLoadingOverlay: some View {
+        Group {
+            if viewModel.isLoading {
+                ZStack {
+                    Color.black.opacity(0.3).ignoresSafeArea()
+                    ProgressView("Processing...")
+                        .padding()
+                        .background(Color.white)
+                        .cornerRadius(10)
+                }
+            }
+        }
+    }
+    
+    private var createAccountCard: some View {
+        ForsaCard {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Setup Your Trading Account")
+                    .font(.headline)
+                Text("To start trading with real market data, create your sandbox account.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                
+                Button(action: {
+                    if let user = coordinator.currentUser {
+                        Task {
+                            await viewModel.createAccountForUser(user: user)
+                        }
+                    }
+                }) {
+                    Text("Create Account")
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(Color.primaryPurple)
+                        .cornerRadius(8)
+                }
+            }
         }
     }
 
@@ -98,7 +157,7 @@ struct DashboardView: View {
                             .font(.callout)
                             .foregroundColor(.textSecondary)
                         
-                        Text("$\(String(format: "%.2f", viewModel.totalPortfolioValue))")
+                        Text(viewModel.portfolioValueText)
                             .font(.system(size: 32, weight: .bold, design: .rounded))
                             .foregroundColor(.textPrimary)
                         
@@ -144,10 +203,10 @@ struct DashboardView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("Dividends")
+                            Text("Cash")
                                 .font(.caption1)
                                 .foregroundColor(.textSecondary)
-                            Text("$\(String(format: "%.2f", viewModel.totalDividends))")
+                            Text(viewModel.cashBalanceText)
                                 .font(.subheadline)
                                 .fontWeight(.semibold)
                                 .foregroundColor(.textPrimary)
@@ -157,37 +216,45 @@ struct DashboardView: View {
                     .padding(.top, 8)
                     
                     // Chart
-                    Chart(viewModel.chartData) { data in
-                        LineMark(
-                            x: .value("Date", data.date),
-                            y: .value("Value", data.value)
-                        )
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [.primaryPurple, .primaryPurpleDark],
-                                startPoint: .leading,
-                                endPoint: .trailing
+                    if !viewModel.chartData.isEmpty {
+                        Chart(viewModel.chartData) { data in
+                            LineMark(
+                                x: .value("Date", data.date),
+                                y: .value("Value", data.value)
                             )
-                        )
-                        .lineStyle(StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
-                        .interpolationMethod(.catmullRom)
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [.primaryPurple, .primaryPurpleDark],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .lineStyle(StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+                            .interpolationMethod(.catmullRom)
 
-                        AreaMark(
-                            x: .value("Date", data.date),
-                            y: .value("Value", data.value)
-                        )
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [.primaryPurple.opacity(0.2), .clear],
-                                startPoint: .top,
-                                endPoint: .bottom
+                            AreaMark(
+                                x: .value("Date", data.date),
+                                y: .value("Value", data.value)
                             )
-                        )
-                        .interpolationMethod(.catmullRom)
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [.primaryPurple.opacity(0.2), .clear],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            )
+                            .interpolationMethod(.catmullRom)
+                        }
+                        .frame(height: 200)
+                        .chartYAxis(.hidden)
+                        .chartXAxis(.hidden)
+                    } else {
+                        Text("No chart data available")
+                            .font(.caption)
+                            .frame(height: 200)
+                            .frame(maxWidth: .infinity)
+                            .background(Color.backgroundSecondary)
                     }
-                    .frame(height: 200)
-                    .chartYAxis(.hidden)
-                    .chartXAxis(.hidden)
                     
                     // Timeframe Selector
                     HStack {
@@ -195,7 +262,7 @@ struct DashboardView: View {
                             Button(action: {
                                 withAnimation {
                                     viewModel.selectedTimeframe = timeframe
-                                    // In a real app, this would trigger a data reload for the timeframe
+                                    Task { await viewModel.refreshData() }
                                 }
                             }) {
                                 Text(timeframe.displayName)
@@ -235,7 +302,7 @@ struct DashboardView: View {
                                 Text("Available Cash")
                                     .font(.callout)
                                     .foregroundColor(.textSecondary)
-                                Text("$\(String(format: "%.2f", viewModel.cashBalance))")
+                                Text(viewModel.cashBalanceText)
                                     .font(.title2)
                                     .fontWeight(.bold)
                                     .foregroundColor(.textPrimary)
@@ -266,6 +333,8 @@ struct DashboardView: View {
                             .background(Color.primaryPurple)
                             .cornerRadius(10)
                         }
+                        .disabled(viewModel.needsAccountCreation)
+                        .opacity(viewModel.needsAccountCreation ? 0.5 : 1)
                         
                         Button(action: { showingWithdraw = true }) {
                             HStack {
@@ -283,6 +352,65 @@ struct DashboardView: View {
                     }
                 }
             }
+        }
+    }
+}
+
+// MARK: - Deposit View
+struct DepositView: View {
+    @ObservedObject var viewModel: DashboardViewModel
+    @Environment(\.presentationMode) var presentationMode
+    @State private var amountKD: String = ""
+    
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 20) {
+                Text("Add Funds")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                
+                VStack(alignment: .leading) {
+                    Text("Amount (KWD)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    
+                    TextField("0.00", text: $amountKD)
+                        .keyboardType(.decimalPad)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .font(.title3)
+                }
+                .padding()
+                
+                if let amount = Double(amountKD) {
+                    Text("Equivalent to \(CurrencyService.shared.formatUSD(CurrencyService.shared.convertKWDtoUSD(amount)))")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                
+                Button(action: {
+                    if let amount = Double(amountKD) {
+                        Task {
+                            await viewModel.depositFunds(amountKD: amount)
+                            presentationMode.wrappedValue.dismiss()
+                        }
+                    }
+                }) {
+                    Text("Deposit")
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.primaryGreen)
+                        .cornerRadius(10)
+                }
+                .disabled(amountKD.isEmpty || Double(amountKD) == nil)
+                
+                Spacer()
+            }
+            .padding()
+            .navigationBarItems(trailing: Button("Close") {
+                presentationMode.wrappedValue.dismiss()
+            })
         }
     }
 }

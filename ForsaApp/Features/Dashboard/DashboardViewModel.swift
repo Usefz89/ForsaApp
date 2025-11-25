@@ -18,93 +18,154 @@ class DashboardViewModel: ObservableObject {
     @Published var chartData: [ChartDataPoint] = []
     @Published var selectedTimeframe: TimeFrame = .oneWeek
     @Published var isLoading = false
-
+    @Published var errorMessage: String?
+    
+    // Alpaca Integration
+    @Published var accountId: String?
+    @Published var needsAccountCreation = false
+    
+    private let alpacaService = AlpacaTradingService.shared
+    private let currencyService = CurrencyService.shared
+    
     var isPortfolioPositive: Bool {
         totalGainLoss >= 0
     }
-
+    
     var portfolioChangeText: String {
         let sign = totalGainLoss >= 0 ? "+" : ""
-        let amount = String(format: "%.2f", abs(totalGainLoss))
+        let amount = currencyService.formatUSD(abs(totalGainLoss))
         let percentage = String(format: "%.2f", abs(totalGainLossPercentage))
-        return "\(sign)$\(amount) (\(sign)\(percentage)%)"
+        return "\(sign)\(amount) (\(sign)\(percentage)%)"
     }
-
+    
     var totalGainLossText: String {
         let sign = totalGainLoss >= 0 ? "+" : ""
-        return "\(sign)$\(String(format: "%.0f", abs(totalGainLoss)))"
+        return "\(sign)\(currencyService.formatUSD(abs(totalGainLoss)))"
     }
-
+    
+    var portfolioValueText: String {
+        currencyService.formatUSD(totalPortfolioValue)
+    }
+    
+    var cashBalanceText: String {
+        currencyService.formatUSD(cashBalance)
+    }
+    
     init() {
-        // Initial empty state
+        checkAccountStatus()
     }
-
-    func loadData(user: User?) {
-        guard let user = user else { return }
-        
-        // For now, we'll use the user's totalPortfolioValue if available, or calculate from goals/holdings if we had them.
-        // Since we are moving away from "Goals" as the primary driver, we might want to rely on the User object's aggregated stats
-        // or fetch a Portfolio object.
-        // For this refactor, let's assume the User object has the latest stats or we calculate from a "Main Portfolio".
-        
-        self.totalPortfolioValue = user.totalPortfolioValue
-        self.cashBalance = user.cashBalance
-        self.totalGainLoss = user.totalGainLoss
-        self.totalGainLossPercentage = user.totalGainLossPercentage
-        self.totalDividends = 0 // Placeholder, or add to User model if needed
-        
-        // If values are zero (e.g. new user), let's mock some data for the "Rich Aesthetics" demo if needed,
-        // but strictly speaking we should show real data.
-        // However, the user asked to "polish the home page", so let's ensure we have data to show.
-        
-        if self.totalPortfolioValue == 0 && self.cashBalance == 0 {
-             // Fallback for demo purposes if user is empty
-             // self.loadPortfolioSummary() // Uncomment to force demo data
+    
+    func checkAccountStatus() {
+        if let id = UserDefaults.standard.string(forKey: "alpaca_account_id") {
+            self.accountId = id
+            Task { await refreshData() }
+        } else {
+            needsAccountCreation = true
         }
-        
-        generateChartData()
     }
     
     @MainActor
-    func refreshData(user: User?) async {
+    func createAccountForUser(user: User) async {
         isLoading = true
-
-        // Simulate API call delay
-        try? await Task.sleep(nanoseconds: 1_000_000_000)
-
-        loadData(user: user)
+        do {
+            let id = try await alpacaService.createAccount(
+                email: user.email,
+                firstName: user.firstName,
+                lastName: user.lastName
+            )
+            UserDefaults.standard.set(id, forKey: "alpaca_account_id")
+            self.accountId = id
+            self.needsAccountCreation = false
+            await refreshData()
+        } catch {
+            self.errorMessage = "Failed to create account: \(error.localizedDescription)"
+        }
         isLoading = false
     }
-
-    private func loadPortfolioSummary() {
-        totalPortfolioValue = 25420.50
-        totalInvested = 22580.20
-        totalGainLoss = 2840.30
-        totalGainLossPercentage = 12.6
-        cashBalance = 5000.00
-    }
-
-    private func generateChartData() {
-        let calendar = Calendar.current
-        let now = Date()
-        var data: [ChartDataPoint] = []
-
-        let baseValue = totalPortfolioValue > 0 ? totalPortfolioValue * 0.9 : 10000 // Fallback for empty
-        let currentValue = totalPortfolioValue > 0 ? totalPortfolioValue : 10000
-
-        // Generate data points based on selected timeframe
-        let days = selectedTimeframe.days
-        let increment = (currentValue - baseValue) / Double(days)
-
-        for i in 0...days {
-            let date = calendar.date(byAdding: .day, value: -days + i, to: now) ?? now
-            let randomVariation = Double.random(in: -200...200)
-            let value = baseValue + (Double(i) * increment) + randomVariation
-
-            data.append(ChartDataPoint(date: date, value: max(value, baseValue * 0.9)))
+    
+    @MainActor
+    func refreshData() async {
+        guard let accountId = accountId else { return }
+        isLoading = true
+        errorMessage = nil
+        
+        do {
+            // 1. Fetch Account Details
+            let account = try await alpacaService.fetchAccountDetails(accountId: accountId)
+            self.totalPortfolioValue = account.equityValue
+            self.cashBalance = account.cashValue
+            // Buying power or other stats can be added
+            
+            // 2. Fetch Positions to calculate Total Invested (Cost Basis)
+            let positions = try await alpacaService.fetchPositions(accountId: accountId)
+            let totalCostBasis = positions.reduce(0.0) { $0 + (Double($1.costBasis) ?? 0) }
+            self.totalInvested = totalCostBasis
+            
+            // Calculate Gain/Loss
+            // Equity - Cost Basis (approximate, doesn't account for realized gains/losses fully in this simple view)
+            // Better to use Account's equity - cash? No.
+            // Total Gain/Loss usually comes from (Equity - Net Deposits).
+            // For simplicity in this MVP, we compare Current Equity vs Cost Basis of open positions + Cash? No.
+            // We will use (Equity - TotalInvested) if we assume Cash is uninvested.
+            // Actually, let's rely on positions for "Unrealized P&L" which is what users usually see for "Portfolio Performance".
+            // Or use Alpaca's `equity - last_equity` for day change.
+            
+            // Let's sum up Unrealized PL from positions
+            let unrealizedPL = positions.reduce(0.0) { $0 + ((Double($1.marketValue ?? "0") ?? 0) - (Double($1.costBasis) ?? 0)) }
+            self.totalGainLoss = unrealizedPL
+            self.totalGainLossPercentage = totalCostBasis > 0 ? (unrealizedPL / totalCostBasis) * 100 : 0
+            
+            // 3. Fetch History for Chart
+            let points = try await alpacaService.fetchPortfolioHistory(
+                accountId: accountId,
+                period: mapTimeframeToPeriod(selectedTimeframe),
+                timeframe: mapTimeframeToInterval(selectedTimeframe)
+            )
+            self.chartData = points
+            
+        } catch {
+            self.errorMessage = "Failed to load data: \(error.localizedDescription)"
+            print("Dashboard Data Error: \(error)")
         }
-
-        chartData = data
+        
+        isLoading = false
+    }
+    
+    @MainActor
+    func depositFunds(amountKD: Double) async {
+        guard let accountId = accountId else { return }
+        let amountUSD = currencyService.convertKWDtoUSD(amountKD)
+        
+        isLoading = true
+        do {
+            try await alpacaService.fundAccount(accountId: accountId, amount: amountUSD)
+            await refreshData()
+        } catch {
+            self.errorMessage = "Deposit failed: \(error.localizedDescription)"
+        }
+        isLoading = false
+    }
+    
+    // MARK: - Helpers
+    
+    private func mapTimeframeToPeriod(_ timeframe: TimeFrame) -> String {
+        switch timeframe {
+        case .oneDay: return "1D"
+        case .oneWeek: return "1W"
+        case .oneMonth: return "1M"
+        case .threeMonths: return "3M" // Alpaca supports 3M
+        case .oneYear: return "1A" // 1A for 1 Year
+        }
+    }
+    
+    private func mapTimeframeToInterval(_ timeframe: TimeFrame) -> String {
+        switch timeframe {
+        case .oneDay: return "5Min"
+        case .oneWeek: return "1H"
+        case .oneMonth: return "1D"
+        case .threeMonths: return "1D"
+        case .oneYear: return "1D"
+        }
     }
 }
 
@@ -124,7 +185,7 @@ enum TimeFrame: CaseIterable {
         case .oneYear: return "1Y"
         }
     }
-
+    
     var days: Int {
         switch self {
         case .oneDay: return 1
