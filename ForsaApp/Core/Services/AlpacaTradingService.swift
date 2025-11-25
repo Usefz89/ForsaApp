@@ -65,6 +65,43 @@ class AlpacaTradingService: ObservableObject {
     
     // MARK: - Account Management
     
+    /// Searches for an existing account by email in Alpaca Broker API
+    func searchAccountByEmail(_ email: String) async throws -> AlpacaAccount? {
+        print("🔍 Searching for Alpaca account with email: \(email)")
+        
+        // URL encode the email for query parameter
+        let encodedEmail = email.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? email
+        let url = URL(string: "\(brokerBaseURL)/accounts?query=\(encodedEmail)")!
+        
+        let request = try createBrokerRequest(url: url, method: "GET")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        // Log raw response for debugging
+        if let responseString = String(data: data, encoding: .utf8) {
+            print("📥 Search Response: \(responseString.prefix(500))")
+        }
+        
+        try validateResponse(response, data: data)
+        
+        // The API returns an array of accounts
+        let accounts = try JSONDecoder().decode([AlpacaAccount].self, from: data)
+        
+        // Find the account that matches the email exactly
+        if let matchingAccount = accounts.first(where: { $0.contact?.email_address.lowercased() == email.lowercased() }) {
+            print("✅ Found account for email \(email): \(matchingAccount.id)")
+            return matchingAccount
+        }
+        
+        // If no exact match, return the first account if any (for cases where search is partial)
+        if let firstAccount = accounts.first {
+            print("⚠️ No exact email match, using first result: \(firstAccount.id)")
+            return firstAccount
+        }
+        
+        print("❌ No account found for email: \(email)")
+        return nil
+    }
+    
     /// Creates a new user account in Alpaca Broker API
     func createAccount(email: String, firstName: String, lastName: String) async throws -> String {
         print("📝 Starting Alpaca Account Creation...")

@@ -104,6 +104,9 @@ class AppCoordinator: ObservableObject {
         UserDefaults.standard.removeObject(forKey: StorageKeys.alpacaAccountId)
         UserDefaults.standard.removeObject(forKey: StorageKeys.userEmail)
         UserDefaults.standard.removeObject(forKey: StorageKeys.userPassword)
+        // Also clear user name keys
+        UserDefaults.standard.removeObject(forKey: "user_first_name")
+        UserDefaults.standard.removeObject(forKey: "user_last_name")
         UserDefaults.standard.synchronize()
     }
 
@@ -140,20 +143,46 @@ class AppCoordinator: ObservableObject {
             }
         }
         
-        // 4. For sign-in with saved email but different password, still check if account exists
-        guard let accountId = UserDefaults.standard.string(forKey: StorageKeys.alpacaAccountId) else {
+        // 4. Try to get account ID from local storage first, otherwise search by email
+        var accountId = UserDefaults.standard.string(forKey: StorageKeys.alpacaAccountId)
+        
+        // 5. If no local account ID, search for account by email via Alpaca API
+        if accountId == nil {
+            print("🔍 No local account ID found, searching Alpaca by email...")
+            do {
+                if let foundAccount = try await AlpacaTradingService.shared.searchAccountByEmail(email) {
+                    accountId = foundAccount.id
+                    // Save the found account ID for future logins
+                    UserDefaults.standard.set(foundAccount.id, forKey: StorageKeys.alpacaAccountId)
+                    print("✅ Found and saved Alpaca account ID: \(foundAccount.id)")
+                    
+                    // Also save the name from the account if available
+                    if let firstName = foundAccount.identity?.given_name {
+                        UserDefaults.standard.set(firstName, forKey: "user_first_name")
+                    }
+                    if let lastName = foundAccount.identity?.family_name {
+                        UserDefaults.standard.set(lastName, forKey: "user_last_name")
+                    }
+                }
+            } catch {
+                print("⚠️ Account search failed: \(error)")
+            }
+        }
+        
+        // 6. If still no account ID, the account doesn't exist
+        guard let finalAccountId = accountId else {
             throw NSError(domain: "AuthError", code: 404, 
                          userInfo: [NSLocalizedDescriptionKey: "No account found. Please sign up first."])
         }
         
-        // 5. Verify the account exists in Alpaca
+        // 7. Verify the account exists in Alpaca and get latest details
         do {
-            let account = try await AlpacaTradingService.shared.fetchAccountDetails(accountId: accountId)
+            let account = try await AlpacaTradingService.shared.fetchAccountDetails(accountId: finalAccountId)
             print("✅ Alpaca account verified: \(account.id)")
             
-            // Use saved name if email matches, otherwise extract from email
-            let firstName = savedFirstName ?? email.components(separatedBy: "@").first?.capitalized ?? "User"
-            let lastName = savedLastName ?? ""
+            // Use name from account identity if available, otherwise from saved or email
+            let firstName = account.identity?.given_name ?? savedFirstName ?? email.components(separatedBy: "@").first?.capitalized ?? "User"
+            let lastName = account.identity?.family_name ?? savedLastName ?? ""
             
             print("📝 Using name: \(firstName) \(lastName)")
             
@@ -175,6 +204,10 @@ class AppCoordinator: ObservableObject {
             
             // Save the session
             saveSession(user: user, email: email, password: password)
+            
+            // Also save user name for future logins
+            UserDefaults.standard.set(firstName, forKey: "user_first_name")
+            UserDefaults.standard.set(lastName, forKey: "user_last_name")
             
             await MainActor.run {
                 self.currentUser = user

@@ -22,6 +22,9 @@ struct AlpacaAccount: Codable, Identifiable {
     let longMarketValue: String?  // Total market value of long positions
     let shortMarketValue: String? // Total market value of short positions
     let createdAt: String?
+    // Contact and identity info (returned when listing accounts)
+    let contact: AlpacaContact?
+    let identity: AlpacaIdentity?
     
     enum CodingKeys: String, CodingKey {
         case id
@@ -36,6 +39,8 @@ struct AlpacaAccount: Codable, Identifiable {
         case longMarketValue = "long_market_value"
         case shortMarketValue = "short_market_value"
         case createdAt = "created_at"
+        case contact
+        case identity
     }
     
     // Helpers to convert string values to Double
