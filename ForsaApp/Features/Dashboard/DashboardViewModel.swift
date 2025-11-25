@@ -23,6 +23,17 @@ class DashboardViewModel: ObservableObject {
     // Alpaca Integration
     @Published var accountId: String?
     @Published var needsAccountCreation = false
+    @Published var positions: [AlpacaPosition] = []
+    
+    // Computed property to check if user has investments
+    var hasPositions: Bool {
+        !positions.isEmpty
+    }
+    
+    // Check if user can invest (has cash but no positions)
+    var canInvestNow: Bool {
+        cashBalance >= 1.0 && !hasPositions
+    }
     
     private let alpacaService = AlpacaTradingService.shared
     private let currencyService = CurrencyService.shared
@@ -112,8 +123,9 @@ class DashboardViewModel: ObservableObject {
             // Buying power or other stats can be added
             
             // 2. Fetch Positions to calculate Total Invested (Cost Basis)
-            let positions = try await alpacaService.fetchPositions(accountId: accountId)
-            let totalCostBasis = positions.reduce(0.0) { $0 + (Double($1.costBasis) ?? 0) }
+            let fetchedPositions = try await alpacaService.fetchPositions(accountId: accountId)
+            self.positions = fetchedPositions
+            let totalCostBasis = fetchedPositions.reduce(0.0) { $0 + (Double($1.costBasis) ?? 0) }
             self.totalInvested = totalCostBasis
             
             // Calculate Gain/Loss
@@ -126,7 +138,7 @@ class DashboardViewModel: ObservableObject {
             // Or use Alpaca's `equity - last_equity` for day change.
             
             // Let's sum up Unrealized PL from positions
-            let unrealizedPL = positions.reduce(0.0) { $0 + ((Double($1.marketValue ?? "0") ?? 0) - (Double($1.costBasis) ?? 0)) }
+            let unrealizedPL = fetchedPositions.reduce(0.0) { $0 + ((Double($1.marketValue ?? "0") ?? 0) - (Double($1.costBasis) ?? 0)) }
             self.totalGainLoss = unrealizedPL
             self.totalGainLossPercentage = totalCostBasis > 0 ? (unrealizedPL / totalCostBasis) * 100 : 0
             

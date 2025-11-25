@@ -13,6 +13,7 @@ extension Color {
     static let primaryPurpleDark = Color(red: 0.545, green: 0.361, blue: 0.965) // #8B5CF6
     static let primaryGreen = Color(red: 0.063, green: 0.725, blue: 0.506) // #10B981
     static let primaryBlue = Color(red: 0.235, green: 0.639, blue: 0.973) // #3C82F6
+    static let primaryOrange = Color(red: 0.969, green: 0.533, blue: 0.212) // #F78836
 
     // MARK: - Background Colors
     static let backgroundPrimary = Color.white

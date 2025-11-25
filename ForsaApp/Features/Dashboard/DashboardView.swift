@@ -13,6 +13,8 @@ struct DashboardView: View {
     @StateObject private var viewModel = DashboardViewModel()
     @State private var showingAddFunds = false
     @State private var showingWithdraw = false
+    @State private var isInvesting = false
+    @State private var showInvestmentResult = false
 
     var body: some View {
         NavigationView {
@@ -38,15 +40,22 @@ struct DashboardView: View {
                     
                     // Header with user greeting
                     headerView
+                    
+                    // Prompt to invest if cash available but no positions
+                    if viewModel.canInvestNow && coordinator.selectedPortfolio != nil {
+                        investNowCard
+                    }
 
                     // Portfolio Progress Chart
                     portfolioProgressSection
+                    
+                    // Holdings Section (if user has positions)
+                    if viewModel.hasPositions {
+                        holdingsSection
+                    }
 
                     // Cash Balance & Actions
                     cashBalanceSection
-                    
-                    // Additional Info (Optional, placeholder for now)
-                    // We can add "Top Holdings" or "Market News" later if needed
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 100) // Account for tab bar
@@ -63,6 +72,7 @@ struct DashboardView: View {
                 }
             }) {
                 DepositFlowView()
+                    .environmentObject(coordinator)
             }
             .sheet(isPresented: $showingWithdraw, onDismiss: {
                 // Refresh data after withdraw
@@ -72,6 +82,16 @@ struct DashboardView: View {
             }) {
                 WithdrawFlowView()
             }
+            .sheet(isPresented: $showInvestmentResult) {
+                if let result = coordinator.portfolioInvestmentResult {
+                    InvestmentResultView(result: result, depositAmount: viewModel.cashBalance) {
+                        showInvestmentResult = false
+                        Task {
+                            await viewModel.refreshData()
+                        }
+                    }
+                }
+            }
         }
         .onAppear {
             Task {
@@ -79,6 +99,7 @@ struct DashboardView: View {
             }
         }
         .overlay(isLoadingOverlay)
+        .overlay(investingOverlay)
     }
     
     private var isLoadingOverlay: some View {
@@ -90,6 +111,151 @@ struct DashboardView: View {
                         .padding()
                         .background(Color.white)
                         .cornerRadius(10)
+                }
+            }
+        }
+    }
+    
+    private var investingOverlay: some View {
+        Group {
+            if isInvesting || coordinator.isInvestingPortfolio {
+                ZStack {
+                    Color.black.opacity(0.5).ignoresSafeArea()
+                    
+                    VStack(spacing: 20) {
+                        ProgressView()
+                            .scaleEffect(1.5)
+                            .tint(.white)
+                        
+                        Text("Investing your funds...")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                        
+                        if let portfolio = coordinator.selectedPortfolio {
+                            Text("Building your \(portfolio.title) portfolio")
+                                .font(.caption)
+                                .foregroundColor(.white.opacity(0.8))
+                        }
+                    }
+                    .padding(30)
+                    .background(Color.primaryPurple)
+                    .cornerRadius(16)
+                }
+            }
+        }
+    }
+    
+    private var investNowCard: some View {
+        ForsaCard {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack {
+                    Image(systemName: "sparkles")
+                        .font(.title2)
+                        .foregroundColor(.primaryGreen)
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Ready to Invest!")
+                            .font(.headline)
+                            .foregroundColor(.textPrimary)
+                        
+                        Text("You have \(viewModel.availableBalanceText) available")
+                            .font(.caption)
+                            .foregroundColor(.textSecondary)
+                    }
+                    
+                    Spacer()
+                }
+                
+                if let portfolio = coordinator.selectedPortfolio {
+                    Text("Invest in your \(portfolio.title) portfolio")
+                        .font(.subheadline)
+                        .foregroundColor(.textSecondary)
+                    
+                    // Portfolio allocation preview
+                    HStack(spacing: 4) {
+                        ForEach(portfolio.allocations.prefix(4)) { allocation in
+                            VStack(spacing: 2) {
+                                Text(allocation.ticker)
+                                    .font(.caption2)
+                                    .fontWeight(.medium)
+                                Text("\(Int(allocation.percentage * 100))%")
+                                    .font(.caption2)
+                                    .foregroundColor(.textSecondary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 6)
+                            .background(Color.backgroundSecondary)
+                            .cornerRadius(6)
+                        }
+                    }
+                }
+                
+                Button(action: {
+                    Task {
+                        await investNow()
+                    }
+                }) {
+                    HStack {
+                        Image(systemName: "chart.pie.fill")
+                        Text("Invest Now")
+                    }
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(Color.primaryGreen)
+                    .cornerRadius(10)
+                }
+            }
+        }
+    }
+    
+    private func investNow() async {
+        isInvesting = true
+        
+        do {
+            if let result = try await coordinator.investInPortfolio() {
+                await MainActor.run {
+                    isInvesting = false
+                    if result.successCount > 0 {
+                        showInvestmentResult = true
+                    }
+                }
+            }
+        } catch {
+            await MainActor.run {
+                isInvesting = false
+                viewModel.errorMessage = "Investment failed: \(error.localizedDescription)"
+            }
+        }
+        
+        // Refresh data regardless
+        await viewModel.refreshData()
+    }
+    
+    private var holdingsSection: some View {
+        VStack(spacing: 16) {
+            HStack {
+                Text("Your Holdings")
+                    .font(.headline)
+                    .foregroundColor(.textPrimary)
+                Spacer()
+                
+                Text("\(viewModel.positions.count) assets")
+                    .font(.caption)
+                    .foregroundColor(.textSecondary)
+            }
+            
+            ForsaCard {
+                VStack(spacing: 12) {
+                    ForEach(viewModel.positions) { position in
+                        HoldingRow(position: position)
+                        
+                        if position.id != viewModel.positions.last?.id {
+                            Divider()
+                        }
+                    }
                 }
             }
         }
@@ -316,7 +482,7 @@ struct DashboardView: View {
             
             ForsaCard {
                 VStack(spacing: 20) {
-                    NavigationLink(destination: CashReserveView()) {
+                    NavigationLink(destination: CashReserveView().environmentObject(coordinator)) {
                         HStack {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("Available Balance")
@@ -373,6 +539,75 @@ struct DashboardView: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Holding Row View
+
+struct HoldingRow: View {
+    let position: AlpacaPosition
+    
+    private var gainLoss: Double {
+        position.marketValueValue - (Double(position.costBasis) ?? 0)
+    }
+    
+    private var gainLossPercentage: Double {
+        let costBasis = Double(position.costBasis) ?? 0
+        guard costBasis > 0 else { return 0 }
+        return (gainLoss / costBasis) * 100
+    }
+    
+    private var isPositive: Bool {
+        gainLoss >= 0
+    }
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            // Symbol Badge
+            ZStack {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.primaryPurple.opacity(0.1))
+                    .frame(width: 44, height: 44)
+                
+                Text(String(position.symbol.prefix(2)))
+                    .font(.caption)
+                    .fontWeight(.bold)
+                    .foregroundColor(.primaryPurple)
+            }
+            
+            // Symbol & Quantity
+            VStack(alignment: .leading, spacing: 4) {
+                Text(position.symbol)
+                    .font(.callout)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.textPrimary)
+                
+                Text("\(String(format: "%.4f", position.qtyValue)) shares")
+                    .font(.caption)
+                    .foregroundColor(.textSecondary)
+            }
+            
+            Spacer()
+            
+            // Value & Change
+            VStack(alignment: .trailing, spacing: 4) {
+                Text("$\(String(format: "%.2f", position.marketValueValue))")
+                    .font(.callout)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.textPrimary)
+                
+                HStack(spacing: 2) {
+                    Image(systemName: isPositive ? "arrow.up.right" : "arrow.down.right")
+                        .font(.caption2)
+                    
+                    Text("\(isPositive ? "+" : "")\(String(format: "%.2f", gainLossPercentage))%")
+                        .font(.caption)
+                        .fontWeight(.medium)
+                }
+                .foregroundColor(isPositive ? .gainGreen : .lossRed)
+            }
+        }
+        .padding(.vertical, 4)
     }
 }
 

@@ -13,6 +13,9 @@ class AppCoordinator: ObservableObject {
     @Published var currentUser: User?
     @Published var isLoading = true
     @Published var hasCompletedKYC = false
+    @Published var isInvestingPortfolio = false
+    @Published var portfolioInvestmentResult: PortfolioInvestmentResult?
+    @Published var showInvestmentResult = false
     
     // MARK: - UserDefaults Keys
     private enum StorageKeys {
@@ -21,6 +24,7 @@ class AppCoordinator: ObservableObject {
         static let alpacaAccountId = "alpaca_account_id"
         static let userEmail = "forsa_user_email"
         static let userPassword = "forsa_user_password" // In production, use Keychain!
+        static let selectedPortfolio = "forsa_selected_portfolio"
     }
 
     init() {
@@ -301,11 +305,98 @@ class AppCoordinator: ObservableObject {
             goals: updatedGoals
         )
         
+        // Save selected portfolio preference
+        UserDefaults.standard.set(goal.assignedPortfolio.rawValue, forKey: StorageKeys.selectedPortfolio)
+        
         // Update saved user
         updateSavedUser(updatedUser)
         
         self.currentUser = updatedUser
         self.hasCompletedKYC = true
+    }
+    
+    // MARK: - Portfolio Investment
+    
+    /// Get the user's selected portfolio
+    var selectedPortfolio: RiskLevel? {
+        if let portfolioRaw = UserDefaults.standard.string(forKey: StorageKeys.selectedPortfolio),
+           let portfolio = RiskLevel(rawValue: portfolioRaw) {
+            return portfolio
+        }
+        // Fallback to first goal's portfolio
+        return currentUser?.goals.first?.assignedPortfolio
+    }
+    
+    /// Get the Alpaca account ID
+    var alpacaAccountId: String? {
+        UserDefaults.standard.string(forKey: StorageKeys.alpacaAccountId)
+    }
+    
+    /// Invests available cash into the selected portfolio
+    func investInPortfolio(amount: Double? = nil) async throws -> PortfolioInvestmentResult? {
+        guard let accountId = alpacaAccountId else {
+            print("❌ No Alpaca account ID found")
+            throw NSError(domain: "InvestmentError", code: 1, 
+                         userInfo: [NSLocalizedDescriptionKey: "No trading account found. Please sign up first."])
+        }
+        
+        guard let portfolio = selectedPortfolio else {
+            print("❌ No portfolio selected")
+            throw NSError(domain: "InvestmentError", code: 2,
+                         userInfo: [NSLocalizedDescriptionKey: "No portfolio selected. Please complete onboarding."])
+        }
+        
+        await MainActor.run {
+            self.isInvestingPortfolio = true
+        }
+        
+        defer {
+            Task {
+                await MainActor.run {
+                    self.isInvestingPortfolio = false
+                }
+            }
+        }
+        
+        print("🚀 Investing in \(portfolio.title) portfolio")
+        
+        let result = try await AlpacaTradingService.shared.investInPortfolio(
+            accountId: accountId, 
+            portfolio: portfolio,
+            amount: amount
+        )
+        
+        await MainActor.run {
+            self.portfolioInvestmentResult = result
+            self.showInvestmentResult = true
+        }
+        
+        // Refresh account data
+        _ = try? await AlpacaTradingService.shared.fetchAccountDetails(accountId: accountId)
+        _ = try? await AlpacaTradingService.shared.fetchPositions(accountId: accountId)
+        
+        return result
+    }
+    
+    /// Auto-invest when cash is added to account
+    func autoInvestOnDeposit(amount: Double) async {
+        guard let _ = alpacaAccountId,
+              let _ = selectedPortfolio else {
+            print("⚠️ Auto-invest skipped: No account or portfolio configured")
+            return
+        }
+        
+        // Wait a moment for the transfer to settle
+        try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+        
+        do {
+            let result = try await investInPortfolio(amount: amount)
+            if let result = result, result.isFullySuccessful {
+                print("✅ Auto-investment successful!")
+            }
+        } catch {
+            print("❌ Auto-investment failed: \(error)")
+        }
     }
 }
 

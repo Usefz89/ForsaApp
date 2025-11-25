@@ -19,6 +19,11 @@ class AlpacaTradingService: ObservableObject {
     @Published var isPlacingOrder = false
     @Published var currentAccount: AlpacaAccount?
     @Published var currentPositions: [AlpacaPosition] = []
+    @Published var investmentInProgress = false
+    @Published var lastInvestmentResult: PortfolioInvestmentResult?
+    
+    // Cache for verified assets
+    private var verifiedAssets: [String: AlpacaAsset] = [:]
     
     private init() {}
     
@@ -309,9 +314,87 @@ class AlpacaTradingService: ObservableObject {
         return []
     }
     
+    // MARK: - Asset Verification
+    
+    /// Verifies if an asset is tradable on Alpaca
+    func verifyAsset(symbol: String) async throws -> AlpacaAsset {
+        // Check cache first
+        if let cachedAsset = verifiedAssets[symbol] {
+            return cachedAsset
+        }
+        
+        let url = URL(string: "\(brokerBaseURL)/assets/\(symbol)")!
+        let request = try createBrokerRequest(url: url, method: "GET")
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validateResponse(response, data: data)
+        
+        let asset = try JSONDecoder().decode(AlpacaAsset.self, from: data)
+        
+        // Cache the result
+        verifiedAssets[symbol] = asset
+        
+        return asset
+    }
+    
+    /// Verifies multiple assets and returns which ones are tradable
+    func verifyAssets(symbols: [String]) async -> [String: Bool] {
+        var results: [String: Bool] = [:]
+        
+        await withTaskGroup(of: (String, Bool).self) { group in
+            for symbol in symbols {
+                group.addTask {
+                    do {
+                        let asset = try await self.verifyAsset(symbol: symbol)
+                        return (symbol, asset.tradable && asset.fractionable)
+                    } catch {
+                        print("⚠️ Asset \(symbol) verification failed: \(error)")
+                        return (symbol, false)
+                    }
+                }
+            }
+            
+            for await result in group {
+                results[result.0] = result.1
+            }
+        }
+        
+        return results
+    }
+    
+    /// Gets tradable allocations for a portfolio, using fallback tickers if primary not available
+    func getTradableAllocations(for portfolio: RiskLevel) async -> [(allocation: AssetAllocation, ticker: String, isTradable: Bool)] {
+        let allocations = portfolio.allocations
+        
+        // Collect all tickers (primary and fallback) for verification
+        var allTickers: Set<String> = []
+        for allocation in allocations {
+            allTickers.insert(allocation.ticker)
+            if let fallback = allocation.fallbackTicker {
+                allTickers.insert(fallback)
+            }
+        }
+        
+        let verificationResults = await verifyAssets(symbols: Array(allTickers))
+        
+        return allocations.map { allocation in
+            let primaryTradable = verificationResults[allocation.ticker] ?? false
+            
+            if primaryTradable {
+                return (allocation, allocation.ticker, true)
+            } else if let fallback = allocation.fallbackTicker,
+                      verificationResults[fallback] == true {
+                print("📌 Using fallback ticker \(fallback) for \(allocation.name)")
+                return (allocation, fallback, true)
+            } else {
+                return (allocation, allocation.ticker, false)
+            }
+        }
+    }
+    
     // MARK: - Trading
     
-    func placeOrder(accountId: String, symbol: String, notional: Double) async throws {
+    func placeOrder(accountId: String, symbol: String, notional: Double) async throws -> AlpacaOrder {
         let url = URL(string: "\(brokerBaseURL)/trading/accounts/\(accountId)/orders")!
         
         var request = try createBrokerRequest(url: url, method: "POST")
@@ -327,24 +410,140 @@ class AlpacaTradingService: ObservableObject {
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, response) = try await URLSession.shared.data(for: request)
         try validateResponse(response, data: data)
+        
+        let order = try JSONDecoder().decode(AlpacaOrder.self, from: data)
+        return order
     }
     
-    func placeBasketOrder(accountId: String, amount: Double, portfolio: RiskLevel) async throws {
-        await MainActor.run { isPlacingOrder = true }
-        defer { Task { await MainActor.run { isPlacingOrder = false } } }
+    /// Places orders for all assets in a portfolio based on allocation percentages
+    /// Returns detailed results for each order
+    func placeBasketOrder(accountId: String, amount: Double, portfolio: RiskLevel) async throws -> PortfolioInvestmentResult {
+        await MainActor.run { 
+            isPlacingOrder = true 
+            investmentInProgress = true
+        }
+        defer { 
+            Task { 
+                await MainActor.run { 
+                    isPlacingOrder = false 
+                    investmentInProgress = false
+                } 
+            } 
+        }
         
-        let allocations = portfolio.allocations
-        for allocation in allocations {
-            let amountForAsset = amount * allocation.percentage
-            if amountForAsset < 1.0 { continue }
+        print("📊 Starting portfolio investment for \(portfolio.title)")
+        print("   Total amount: $\(String(format: "%.2f", amount))")
+        
+        var orderResults: [OrderResult] = []
+        var totalInvested: Double = 0
+        
+        // First verify all assets (with fallback support)
+        let tradableAllocations = await getTradableAllocations(for: portfolio)
+        
+        // Calculate adjusted allocations for tradable assets only
+        let tradableTotal = tradableAllocations
+            .filter { $0.isTradable }
+            .reduce(0.0) { $0 + $1.allocation.percentage }
+        
+        for (allocation, ticker, isTradable) in tradableAllocations {
+            if !isTradable {
+                print("⚠️ Skipping non-tradable asset: \(allocation.ticker) (and fallback)")
+                orderResults.append(OrderResult(
+                    symbol: allocation.ticker,
+                    requestedAmount: amount * allocation.percentage,
+                    status: .skipped,
+                    message: "Asset not tradable or not fractionable on Alpaca",
+                    orderId: nil
+                ))
+                continue
+            }
+            
+            // Adjust allocation percentage proportionally if some assets are not tradable
+            let adjustedPercentage = allocation.percentage / tradableTotal
+            let amountForAsset = amount * adjustedPercentage
+            
+            // Alpaca minimum is $1 for fractional orders
+            if amountForAsset < 1.0 {
+                print("⚠️ Skipping \(ticker): Amount $\(String(format: "%.2f", amountForAsset)) below minimum")
+                orderResults.append(OrderResult(
+                    symbol: ticker,
+                    requestedAmount: amountForAsset,
+                    status: .skipped,
+                    message: "Amount below $1 minimum",
+                    orderId: nil
+                ))
+                continue
+            }
             
             do {
-                try await placeOrder(accountId: accountId, symbol: allocation.ticker, notional: amountForAsset)
-                print("Placed order for \(allocation.ticker): $\(amountForAsset)")
+                // Use the resolved ticker (primary or fallback)
+                let order = try await placeOrder(accountId: accountId, symbol: ticker, notional: amountForAsset)
+                print("✅ Placed order for \(ticker): $\(String(format: "%.2f", amountForAsset))")
+                totalInvested += amountForAsset
+                
+                orderResults.append(OrderResult(
+                    symbol: ticker,
+                    requestedAmount: amountForAsset,
+                    status: .success,
+                    message: "Order \(order.status)",
+                    orderId: order.id
+                ))
             } catch {
-                print("Failed to place order for \(allocation.ticker): \(error)")
+                print("❌ Failed to place order for \(ticker): \(error)")
+                orderResults.append(OrderResult(
+                    symbol: ticker,
+                    requestedAmount: amountForAsset,
+                    status: .failed,
+                    message: error.localizedDescription,
+                    orderId: nil
+                ))
             }
         }
+        
+        let result = PortfolioInvestmentResult(
+            totalInvested: totalInvested,
+            orderResults: orderResults,
+            successCount: orderResults.filter { $0.status == .success }.count,
+            failedCount: orderResults.filter { $0.status == .failed }.count
+        )
+        
+        await MainActor.run {
+            self.lastInvestmentResult = result
+        }
+        
+        print("📊 Portfolio investment complete:")
+        print("   Total invested: $\(String(format: "%.2f", totalInvested))")
+        print("   Successful: \(result.successCount), Failed: \(result.failedCount)")
+        
+        return result
+    }
+    
+    /// Invests in a portfolio after user completes onboarding
+    /// This is the main entry point for auto-investing
+    func investInPortfolio(accountId: String, portfolio: RiskLevel, amount: Double? = nil) async throws -> PortfolioInvestmentResult {
+        print("🚀 Starting auto-investment in \(portfolio.title) portfolio")
+        
+        // Get current account to check available cash
+        let account = try await fetchAccountDetails(accountId: accountId)
+        let availableCash = account.cashValue
+        
+        // Use specified amount or all available cash
+        let investmentAmount = amount ?? availableCash
+        
+        guard investmentAmount >= 1.0 else {
+            print("⚠️ Insufficient funds for investment: $\(String(format: "%.2f", investmentAmount))")
+            return PortfolioInvestmentResult(
+                totalInvested: 0,
+                orderResults: [],
+                successCount: 0,
+                failedCount: 0
+            )
+        }
+        
+        print("💰 Available cash: $\(String(format: "%.2f", availableCash))")
+        print("💵 Investment amount: $\(String(format: "%.2f", investmentAmount))")
+        
+        return try await placeBasketOrder(accountId: accountId, amount: investmentAmount, portfolio: portfolio)
     }
     
     func fetchPositions(accountId: String) async throws -> [AlpacaPosition] {

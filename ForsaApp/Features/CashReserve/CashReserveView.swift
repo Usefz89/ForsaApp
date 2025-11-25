@@ -8,6 +8,7 @@
 import SwiftUI
 
 struct CashReserveView: View {
+    @EnvironmentObject var coordinator: AppCoordinator
     @StateObject private var viewModel = CashReserveViewModel()
     @Environment(\.dismiss) private var dismiss
 
@@ -56,6 +57,7 @@ struct CashReserveView: View {
                 viewModel.loadData()
             }) {
                 DepositFlowView()
+                    .environmentObject(coordinator)
             }
             .sheet(isPresented: $viewModel.showingWithdrawFlow, onDismiss: {
                 // Refresh data after withdraw sheet is closed
@@ -542,18 +544,27 @@ struct WithdrawFlowView: View {
 }
 
 struct DepositFlowView: View {
+    @EnvironmentObject var coordinator: AppCoordinator
     @Environment(\.dismiss) private var dismiss
     @State private var amountKWD: String = ""
     @State private var isProcessing = false
     @State private var showError = false
     @State private var errorMessage = ""
     @State private var showSuccess = false
+    @State private var autoInvestEnabled = true // Default to auto-invest
+    @State private var isInvesting = false
+    @State private var investmentResult: PortfolioInvestmentResult?
+    @State private var showInvestmentResult = false
     
     private let exchangeRate = AppConfig.Currency.kwdToUsdRate
     
     private var amountUSD: Double {
         guard let kwd = Double(amountKWD) else { return 0 }
         return kwd * exchangeRate
+    }
+    
+    private var selectedPortfolioName: String {
+        coordinator.selectedPortfolio?.title ?? "your portfolio"
     }
     
     var body: some View {
@@ -647,6 +658,72 @@ struct DepositFlowView: View {
                         }
                         .padding(.horizontal, 24)
                         
+                        // Auto-Invest Toggle (if portfolio selected)
+                        if coordinator.selectedPortfolio != nil {
+                            VStack(alignment: .leading, spacing: 12) {
+                                Toggle(isOn: $autoInvestEnabled) {
+                                    HStack(spacing: 12) {
+                                        Image(systemName: "chart.pie.fill")
+                                            .font(.title3)
+                                            .foregroundColor(.primaryGreen)
+                                        
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text("Auto-Invest Funds")
+                                                .font(.calloutMedium)
+                                                .foregroundColor(.textPrimary)
+                                            
+                                            Text("Automatically invest in \(selectedPortfolioName)")
+                                                .font(.caption)
+                                                .foregroundColor(.textSecondary)
+                                        }
+                                    }
+                                }
+                                .tint(.primaryGreen)
+                                
+                                if autoInvestEnabled, let portfolio = coordinator.selectedPortfolio {
+                                    // Show portfolio allocation preview
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        Text("Investment Breakdown")
+                                            .font(.caption)
+                                            .fontWeight(.medium)
+                                            .foregroundColor(.textSecondary)
+                                        
+                                        ForEach(portfolio.allocations) { allocation in
+                                            HStack {
+                                                Circle()
+                                                    .fill(allocationColor(for: allocation.assetClass))
+                                                    .frame(width: 8, height: 8)
+                                                
+                                                Text(allocation.name)
+                                                    .font(.caption)
+                                                    .foregroundColor(.textPrimary)
+                                                
+                                                Spacer()
+                                                
+                                                Text("\(Int(allocation.percentage * 100))%")
+                                                    .font(.caption)
+                                                    .fontWeight(.medium)
+                                                    .foregroundColor(.primaryPurple)
+                                                
+                                                if amountUSD > 0 {
+                                                    Text("($\(String(format: "%.0f", amountUSD * allocation.percentage)))")
+                                                        .font(.caption2)
+                                                        .foregroundColor(.textSecondary)
+                                                }
+                                            }
+                                        }
+                                    }
+                                    .padding(12)
+                                    .background(Color.backgroundSecondary)
+                                    .cornerRadius(8)
+                                }
+                            }
+                            .padding()
+                            .background(Color.backgroundCard)
+                            .cornerRadius(12)
+                            .padding(.horizontal, 24)
+                        }
+                        
                         // Info Card
                         VStack(alignment: .leading, spacing: 12) {
                             HStack {
@@ -658,7 +735,7 @@ struct DepositFlowView: View {
                             }
                             
                             VStack(alignment: .leading, spacing: 8) {
-                                InfoRow(label: "Processing Time", value: "1-2 Business Days")
+                                InfoRow(label: "Processing Time", value: autoInvestEnabled ? "Instant (Sandbox)" : "1-2 Business Days")
                                 InfoRow(label: "Minimum Deposit", value: "KWD 10 (~$32.50)")
                                 InfoRow(label: "Fee", value: "Free")
                             }
@@ -685,11 +762,11 @@ struct DepositFlowView: View {
                         }
                         
                         ForsaButton(
-                            "Deposit Funds",
+                            autoInvestEnabled ? "Deposit & Invest" : "Deposit Funds",
                             style: .primary,
                             size: .large,
                             isDisabled: !isValidAmount,
-                            isLoading: isProcessing
+                            isLoading: isProcessing || isInvesting
                         ) {
                             Task {
                                 await processDeposit()
@@ -719,7 +796,14 @@ struct DepositFlowView: View {
             } message: {
                 Text(errorMessage)
             }
-            .alert("Success!", isPresented: $showSuccess) {
+            .sheet(isPresented: $showInvestmentResult) {
+                if let result = investmentResult {
+                    InvestmentResultView(result: result, depositAmount: amountUSD) {
+                        dismiss()
+                    }
+                }
+            }
+            .alert("Deposit Successful!", isPresented: $showSuccess) {
                 Button("Done") {
                     dismiss()
                 }
@@ -734,6 +818,16 @@ struct DepositFlowView: View {
         return true
     }
     
+    private func allocationColor(for assetClass: AssetClass) -> Color {
+        switch assetClass {
+        case .equity: return .primaryBlue
+        case .sukuk: return .primaryGreen
+        case .gold: return .warningYellow
+        case .reit: return .primaryPurple
+        case .international: return .primaryOrange
+        }
+    }
+    
     private func processDeposit() async {
         isProcessing = true
         
@@ -744,13 +838,206 @@ struct DepositFlowView: View {
             
             // Convert KWD to USD and deposit
             try await AlpacaTradingService.shared.fundAccount(accountId: accountId, amount: amountUSD)
-            showSuccess = true
+            
+            isProcessing = false
+            
+            // If auto-invest is enabled, proceed to invest
+            if autoInvestEnabled && coordinator.selectedPortfolio != nil {
+                isInvesting = true
+                
+                // Wait briefly for funds to settle in sandbox
+                try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+                
+                if let result = try await coordinator.investInPortfolio(amount: amountUSD) {
+                    investmentResult = result
+                    showInvestmentResult = true
+                }
+                
+                isInvesting = false
+            } else {
+                showSuccess = true
+            }
         } catch {
-            errorMessage = "Deposit failed: \(error.localizedDescription)"
+            errorMessage = "Operation failed: \(error.localizedDescription)"
             showError = true
+            isProcessing = false
+            isInvesting = false
         }
-        
-        isProcessing = false
+    }
+}
+
+// MARK: - Investment Result View
+
+struct InvestmentResultView: View {
+    let result: PortfolioInvestmentResult
+    let depositAmount: Double
+    let onDismiss: () -> Void
+    
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                VStack(spacing: 24) {
+                    // Header
+                    VStack(spacing: 16) {
+                        ZStack {
+                            Circle()
+                                .fill(result.isFullySuccessful ? Color.successGreen.opacity(0.2) : Color.warningYellow.opacity(0.2))
+                                .frame(width: 80, height: 80)
+                            
+                            Image(systemName: result.isFullySuccessful ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                                .font(.system(size: 40))
+                                .foregroundColor(result.isFullySuccessful ? .successGreen : .warningYellow)
+                        }
+                        
+                        Text(result.isFullySuccessful ? "Investment Complete!" : "Investment Partially Complete")
+                            .font(.title2)
+                            .fontWeight(.bold)
+                            .foregroundColor(.textPrimary)
+                        
+                        Text("$\(String(format: "%.2f", result.totalInvested)) invested")
+                            .font(.title3)
+                            .foregroundColor(.primaryPurple)
+                    }
+                    .padding(.top, 40)
+                    
+                    // Summary Card
+                    ForsaCard {
+                        VStack(spacing: 16) {
+                            HStack {
+                                Text("Investment Summary")
+                                    .font(.calloutMedium)
+                                    .foregroundColor(.textPrimary)
+                                Spacer()
+                            }
+                            
+                            Divider()
+                            
+                            HStack {
+                                Text("Deposited")
+                                    .font(.caption)
+                                    .foregroundColor(.textSecondary)
+                                Spacer()
+                                Text("$\(String(format: "%.2f", depositAmount))")
+                                    .font(.calloutMedium)
+                                    .foregroundColor(.textPrimary)
+                            }
+                            
+                            HStack {
+                                Text("Invested")
+                                    .font(.caption)
+                                    .foregroundColor(.textSecondary)
+                                Spacer()
+                                Text("$\(String(format: "%.2f", result.totalInvested))")
+                                    .font(.calloutMedium)
+                                    .foregroundColor(.successGreen)
+                            }
+                            
+                            HStack {
+                                Text("Successful Orders")
+                                    .font(.caption)
+                                    .foregroundColor(.textSecondary)
+                                Spacer()
+                                Text("\(result.successCount)")
+                                    .font(.calloutMedium)
+                                    .foregroundColor(.successGreen)
+                            }
+                            
+                            if result.failedCount > 0 {
+                                HStack {
+                                    Text("Failed Orders")
+                                        .font(.caption)
+                                        .foregroundColor(.textSecondary)
+                                    Spacer()
+                                    Text("\(result.failedCount)")
+                                        .font(.calloutMedium)
+                                        .foregroundColor(.errorRed)
+                                }
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 24)
+                    
+                    // Order Details
+                    ForsaCard {
+                        VStack(alignment: .leading, spacing: 16) {
+                            Text("Order Details")
+                                .font(.calloutMedium)
+                                .foregroundColor(.textPrimary)
+                            
+                            ForEach(result.orderResults) { order in
+                                HStack {
+                                    // Status Icon
+                                    Image(systemName: orderStatusIcon(order.status))
+                                        .font(.caption)
+                                        .foregroundColor(orderStatusColor(order.status))
+                                        .frame(width: 20)
+                                    
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(order.symbol)
+                                            .font(.calloutMedium)
+                                            .foregroundColor(.textPrimary)
+                                        
+                                        if let message = order.message {
+                                            Text(message)
+                                                .font(.caption2)
+                                                .foregroundColor(.textSecondary)
+                                        }
+                                    }
+                                    
+                                    Spacer()
+                                    
+                                    Text("$\(String(format: "%.2f", order.requestedAmount))")
+                                        .font(.calloutMedium)
+                                        .foregroundColor(orderStatusColor(order.status))
+                                }
+                                
+                                if order.id != result.orderResults.last?.id {
+                                    Divider()
+                                }
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 24)
+                    
+                    Spacer(minLength: 100)
+                }
+            }
+            .background(Color.backgroundPrimary)
+            .navigationTitle("Investment Result")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        onDismiss()
+                    }
+                    .foregroundColor(.primaryPurple)
+                }
+            }
+            .safeAreaInset(edge: .bottom) {
+                ForsaButton("View Portfolio", style: .primary, size: .large) {
+                    onDismiss()
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 20)
+                .background(Color.backgroundPrimary)
+            }
+        }
+    }
+    
+    private func orderStatusIcon(_ status: OrderResultStatus) -> String {
+        switch status {
+        case .success: return "checkmark.circle.fill"
+        case .failed: return "xmark.circle.fill"
+        case .skipped: return "minus.circle.fill"
+        }
+    }
+    
+    private func orderStatusColor(_ status: OrderResultStatus) -> Color {
+        switch status {
+        case .success: return .successGreen
+        case .failed: return .errorRed
+        case .skipped: return .textSecondary
+        }
     }
 }
 
@@ -789,4 +1076,5 @@ struct TransactionHistoryView: View {
 // MARK: - Preview
 #Preview {
     CashReserveView()
+        .environmentObject(AppCoordinator())
 }

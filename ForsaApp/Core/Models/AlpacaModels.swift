@@ -178,3 +178,59 @@ struct AlpacaAgreement: Codable {
     let ip_address: String
 }
 
+// MARK: - Asset Models
+
+struct AlpacaAsset: Codable {
+    let id: String
+    let assetClass: String
+    let exchange: String
+    let symbol: String
+    let name: String
+    let status: String
+    let tradable: Bool
+    let marginable: Bool
+    let shortable: Bool
+    let fractionable: Bool
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case assetClass = "class"
+        case exchange
+        case symbol
+        case name
+        case status
+        case tradable
+        case marginable
+        case shortable
+        case fractionable
+    }
+}
+
+// MARK: - Order Result Models
+
+struct OrderResult: Identifiable {
+    let id = UUID()
+    let symbol: String
+    let requestedAmount: Double
+    let status: OrderResultStatus
+    let message: String?
+    let orderId: String?
+}
+
+enum OrderResultStatus {
+    case success
+    case failed
+    case skipped
+}
+
+struct PortfolioInvestmentResult {
+    let totalInvested: Double
+    let orderResults: [OrderResult]
+    let successCount: Int
+    let failedCount: Int
+    
+    var isFullySuccessful: Bool {
+        failedCount == 0
+    }
+}
+
