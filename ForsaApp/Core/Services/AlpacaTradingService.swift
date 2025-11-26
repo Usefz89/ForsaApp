@@ -7,6 +7,7 @@
 
 import Foundation
 import Combine
+import UIKit
 
 class AlpacaTradingService: ObservableObject {
     static let shared = AlpacaTradingService()
@@ -21,6 +22,11 @@ class AlpacaTradingService: ObservableObject {
     @Published var currentPositions: [AlpacaPosition] = []
     @Published var investmentInProgress = false
     @Published var lastInvestmentResult: PortfolioInvestmentResult?
+    
+    // Account creation state
+    @Published var accountCreationResult: AlpacaAccountCreationResult?
+    @Published var isCreatingAccount = false
+    @Published var accountStatus: AlpacaAccountStatus?
     
     // Cache for verified assets
     private var verifiedAssets: [String: AlpacaAsset] = [:]
@@ -185,6 +191,636 @@ class AlpacaTradingService: ObservableObject {
         print("   Status: \(account.status ?? "unknown")")
         
         return account.id
+    }
+    
+    /// Creates a new user account with full KYC data in Alpaca Broker API
+    func createAccountWithKYC(
+        contact: AlpacaContact,
+        identity: AlpacaIdentity,
+        disclosures: AlpacaDisclosures,
+        agreements: [AlpacaAgreement],
+        trustedContact: AlpacaTrustedContact? = nil
+    ) async throws -> String {
+        print("📝 Starting Alpaca Account Creation with full KYC...")
+        print("   Email: \(contact.email_address)")
+        print("   Name: \(identity.given_name) \(identity.family_name)")
+        
+        let body = AlpacaCreateAccountRequest(
+            contact: contact,
+            identity: identity,
+            disclosures: disclosures,
+            agreements: agreements,
+            trusted_contact: trustedContact
+        )
+        
+        let url = URL(string: "\(brokerBaseURL)/accounts")!
+        var request = try createBrokerRequest(url: url, method: "POST")
+        
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .prettyPrinted
+        request.httpBody = try encoder.encode(body)
+        
+        // Log the request body
+        if let bodyData = request.httpBody, let bodyString = String(data: bodyData, encoding: .utf8) {
+            print("📤 Request Body:")
+            print(bodyString)
+        }
+        
+        print("📤 Sending POST to: \(url.absoluteString)")
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        // Log raw response
+        if let responseString = String(data: data, encoding: .utf8) {
+            print("📥 Raw Response:")
+            print(responseString)
+        }
+        
+        try validateResponse(response, data: data)
+        
+        let account = try JSONDecoder().decode(AlpacaAccount.self, from: data)
+        print("✅ Account Created Successfully with full KYC!")
+        print("   Account ID: \(account.id)")
+        print("   Status: \(account.status ?? "unknown")")
+        
+        return account.id
+    }
+    
+    // MARK: - Enhanced Account Creation with Full KYC Data
+    
+    /// Creates a new account using comprehensive KYC registration data
+    /// Returns a detailed result including status and any required actions
+    func createAccount(registrationData: KYCRegistrationData) async throws -> AlpacaAccountCreationResult {
+        await MainActor.run { isCreatingAccount = true }
+        defer { Task { await MainActor.run { isCreatingAccount = false } } }
+        
+        print("📝 Starting Enhanced Alpaca Account Creation...")
+        print("   Email: \(registrationData.email)")
+        print("   Name: \(registrationData.firstName) \(registrationData.lastName)")
+        
+        // Build contact information
+        let contact = AlpacaContact(
+            email_address: registrationData.email,
+            phone_number: formatPhoneNumber(registrationData.phoneNumber),
+            street_address: [registrationData.streetAddress, registrationData.apartmentUnit].compactMap { $0?.isEmpty == false ? $0 : nil },
+            city: registrationData.city,
+            state: registrationData.state,
+            postal_code: registrationData.postalCode,
+            country: registrationData.country
+        )
+        
+        // Build identity with all financial information
+        let identity = AlpacaIdentity(
+            given_name: registrationData.firstName,
+            family_name: registrationData.lastName,
+            date_of_birth: formatDate(registrationData.dateOfBirth),
+            tax_id: cleanTaxId(registrationData.taxId),
+            tax_id_type: registrationData.taxIdType.rawValue,
+            country_of_citizenship: registrationData.citizenship,
+            country_of_birth: registrationData.countryOfBirth,
+            country_of_tax_residence: registrationData.countryOfTaxResidence,
+            funding_source: registrationData.fundingSources.map { $0.rawValue },
+            annual_income_min: registrationData.annualIncome?.minValue,
+            annual_income_max: registrationData.annualIncome?.maxValue,
+            liquid_net_worth_min: registrationData.liquidNetWorth?.minValue,
+            liquid_net_worth_max: registrationData.liquidNetWorth?.maxValue,
+            total_net_worth_min: registrationData.netWorth?.minValue,
+            total_net_worth_max: registrationData.netWorth?.maxValue,
+            employment_status: registrationData.employmentStatus.rawValue,
+            employer_name: registrationData.employer,
+            occupation: registrationData.occupation,
+            investment_experience: registrationData.investmentExperience?.rawValue
+        )
+        
+        // Build disclosures with context
+        let disclosures = AlpacaDisclosures(
+            is_control_person: registrationData.isControlPerson,
+            is_affiliated_exchange_or_finra: registrationData.isAffiliatedWithExchange,
+            is_politically_exposed: registrationData.isPoliticallyExposed,
+            immediate_family_exposed: registrationData.immediateFamilyExposed,
+            control_person_context: registrationData.controlPersonContext,
+            affiliated_context: registrationData.affiliationContext,
+            politically_exposed_context: registrationData.politicalExposureContext
+        )
+        
+        // Build agreements with timestamp and IP
+        let signedAt = ISO8601DateFormatter().string(from: Date())
+        let ipAddress = registrationData.ipAddress ?? "0.0.0.0"
+        
+        var agreements: [AlpacaAgreement] = [
+            AlpacaAgreement(agreement: "customer_agreement", signed_at: signedAt, ip_address: ipAddress),
+            AlpacaAgreement(agreement: "account_agreement", signed_at: signedAt, ip_address: ipAddress)
+        ]
+        
+        // Add margin agreement if accepted
+        if registrationData.agreedToMarginAgreement {
+            agreements.append(AlpacaAgreement(agreement: "margin_agreement", signed_at: signedAt, ip_address: ipAddress))
+        }
+        
+        // Build trusted contact if provided
+        let trustedContact = buildTrustedContact(from: registrationData)
+        
+        // Create the request body
+        let body = AlpacaCreateAccountRequest(
+            contact: contact,
+            identity: identity,
+            disclosures: disclosures,
+            agreements: agreements,
+            trusted_contact: trustedContact
+        )
+        
+        let url = URL(string: "\(brokerBaseURL)/accounts")!
+        var request = try createBrokerRequest(url: url, method: "POST")
+        
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .prettyPrinted
+        request.httpBody = try encoder.encode(body)
+        
+        // Log the request body (redact sensitive info)
+        if let bodyData = request.httpBody, let bodyString = String(data: bodyData, encoding: .utf8) {
+            let redactedBody = redactSensitiveInfo(bodyString)
+            print("📤 Request Body (redacted):")
+            print(redactedBody)
+        }
+        
+        print("📤 Sending POST to: \(url.absoluteString)")
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        // Log raw response
+        if let responseString = String(data: data, encoding: .utf8) {
+            print("📥 Raw Response:")
+            print(responseString)
+        }
+        
+        try validateResponse(response, data: data)
+        
+        let account = try JSONDecoder().decode(AlpacaAccount.self, from: data)
+        print("✅ Account Created!")
+        print("   Account ID: \(account.id)")
+        print("   Status: \(account.status ?? "unknown")")
+        
+        // Fetch full account status for detailed result
+        let statusResponse = try? await getAccountStatus(accountId: account.id)
+        
+        // Build comprehensive result
+        let result = AlpacaAccountCreationResult.from(account: account, statusResponse: statusResponse)
+        
+        await MainActor.run {
+            self.accountCreationResult = result
+            self.accountStatus = statusResponse
+        }
+        
+        return result
+    }
+    
+    // MARK: - Account Status Handling
+    
+    /// Fetches and processes account status, returning actionable result
+    func checkAccountStatus(accountId: String) async throws -> AlpacaAccountCreationResult {
+        print("🔍 Checking account status for: \(accountId)")
+        
+        // Get account details
+        let accountUrl = URL(string: "\(brokerBaseURL)/accounts/\(accountId)")!
+        let accountRequest = try createBrokerRequest(url: accountUrl, method: "GET")
+        
+        let (accountData, accountResponse) = try await URLSession.shared.data(for: accountRequest)
+        try validateResponse(accountResponse, data: accountData)
+        
+        let account = try JSONDecoder().decode(AlpacaAccount.self, from: accountData)
+        
+        // Get detailed status
+        let statusResponse = try await getAccountStatus(accountId: accountId)
+        
+        let result = AlpacaAccountCreationResult.from(account: account, statusResponse: statusResponse)
+        
+        await MainActor.run {
+            self.accountCreationResult = result
+            self.accountStatus = statusResponse
+        }
+        
+        // Log status
+        logAccountStatus(result)
+        
+        return result
+    }
+    
+    /// Handles different account statuses with appropriate actions
+    func handleAccountStatus(_ result: AlpacaAccountCreationResult) -> AccountStatusAction {
+        switch result.status {
+        case .submitted:
+            return .showPendingVerification(
+                message: result.message ?? "Your account is being verified. This typically takes 1-3 business days."
+            )
+            
+        case .actionRequired:
+            return .showRequiredActions(actions: result.requiredActions)
+            
+        case .approved:
+            return .proceedToOnboarding(accountId: result.accountId)
+            
+        case .rejected:
+            return .showRejection(
+                reasons: result.rejectionReasons ?? ["Unable to verify your information"],
+                canAppeal: true
+            )
+            
+        case .pendingReview:
+            return .showPendingVerification(
+                message: "Your application is under manual review. We'll notify you when complete."
+            )
+        }
+    }
+    
+    /// Polls account status until it changes from pending
+    func pollAccountStatus(accountId: String, maxAttempts: Int = 10, intervalSeconds: TimeInterval = 30) async throws -> AlpacaAccountCreationResult {
+        var attempts = 0
+        
+        while attempts < maxAttempts {
+            let result = try await checkAccountStatus(accountId: accountId)
+            
+            // If no longer pending, return the result
+            if result.status != .submitted && result.status != .pendingReview {
+                return result
+            }
+            
+            attempts += 1
+            
+            if attempts < maxAttempts {
+                try await Task.sleep(nanoseconds: UInt64(intervalSeconds * 1_000_000_000))
+            }
+        }
+        
+        // Return last known status
+        return try await checkAccountStatus(accountId: accountId)
+    }
+    
+    /// Submit appeal for rejected account
+    func submitAccountAppeal(accountId: String, reason: String, additionalInfo: String?) async throws {
+        print("📝 Submitting appeal for account: \(accountId)")
+        
+        let url = URL(string: "\(brokerBaseURL)/accounts/\(accountId)")!
+        var request = try createBrokerRequest(url: url, method: "PATCH")
+        
+        var body: [String: Any] = [
+            "appeal_reason": reason
+        ]
+        
+        if let info = additionalInfo {
+            body["additional_information"] = info
+        }
+        
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        if let responseString = String(data: data, encoding: .utf8) {
+            print("📥 Appeal Response: \(responseString)")
+        }
+        
+        try validateResponse(response, data: data)
+        print("✅ Appeal submitted successfully")
+    }
+    
+    private func logAccountStatus(_ result: AlpacaAccountCreationResult) {
+        print("📊 Account Status Summary:")
+        print("   Account ID: \(result.accountId)")
+        print("   Status: \(result.status.displayTitle)")
+        
+        if !result.requiredActions.isEmpty {
+            print("   Required Actions:")
+            for action in result.requiredActions {
+                print("     - \(action.type.displayName): \(action.description)")
+            }
+        }
+        
+        if let reasons = result.rejectionReasons {
+            print("   Rejection Reasons:")
+            for reason in reasons {
+                print("     - \(reason)")
+            }
+        }
+        
+        if let message = result.message {
+            print("   Message: \(message)")
+        }
+    }
+    
+    /// Uploads a document for KYC verification
+    func uploadDocument(accountId: String, documentType: String, documentSubType: String?, imageData: Data, mimeType: String = "image/jpeg") async throws -> AlpacaDocumentResponse {
+        print("📄 Uploading document for account: \(accountId)")
+        
+        let url = URL(string: "\(brokerBaseURL)/accounts/\(accountId)/documents/upload")!
+        var request = try createBrokerRequest(url: url, method: "POST")
+        
+        let base64Content = imageData.base64EncodedString()
+        
+        var body: [String: Any] = [
+            "document_type": documentType,
+            "content": base64Content,
+            "mime_type": mimeType
+        ]
+        
+        if let subType = documentSubType {
+            body["document_sub_type"] = subType
+        }
+        
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        if let responseString = String(data: data, encoding: .utf8) {
+            print("📥 Document Upload Response: \(responseString)")
+        }
+        
+        try validateResponse(response, data: data)
+        
+        let documentResponse = try JSONDecoder().decode(AlpacaDocumentResponse.self, from: data)
+        print("✅ Document uploaded successfully: \(documentResponse.id)")
+        
+        return documentResponse
+    }
+    
+    // MARK: - Enhanced Document Upload API
+    
+    /// Uploads a document with automatic image compression and format handling
+    /// - Parameters:
+    ///   - accountId: The Alpaca account ID
+    ///   - documentType: Type of document (identity_verification, address_verification, etc.)
+    ///   - documentSubType: Sub-type (passport, drivers_license, etc.)
+    ///   - imageData: Raw image data
+    ///   - side: For documents requiring both sides (front/back)
+    /// - Returns: Upload result with status
+    func uploadDocumentWithCompression(
+        accountId: String,
+        documentType: AlpacaDocumentType,
+        documentSubType: AlpacaDocumentSubType?,
+        imageData: Data,
+        side: DocumentSide = .front
+    ) async throws -> AlpacaDocumentUploadResult {
+        print("📄 Uploading \(documentType.displayName) (\(side.rawValue)) for account: \(accountId)")
+        
+        // Compress and validate image
+        let (processedData, mimeType) = try processImageForUpload(imageData)
+        
+        print("   Original size: \(imageData.count / 1024)KB")
+        print("   Processed size: \(processedData.count / 1024)KB")
+        print("   MIME type: \(mimeType)")
+        
+        // Build document type string with side suffix if needed
+        var docTypeString = documentType.rawValue
+        if documentSubType?.requiresBothSides == true {
+            docTypeString += "_\(side.rawValue)"
+        }
+        
+        // Upload the document
+        let url = URL(string: "\(brokerBaseURL)/accounts/\(accountId)/documents/upload")!
+        var request = try createBrokerRequest(url: url, method: "POST")
+        
+        let base64Content = processedData.base64EncodedString()
+        
+        var body: [String: Any] = [
+            "document_type": documentType.rawValue,
+            "content": base64Content,
+            "mime_type": mimeType
+        ]
+        
+        if let subType = documentSubType {
+            body["document_sub_type"] = subType.rawValue
+        }
+        
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        if let responseString = String(data: data, encoding: .utf8) {
+            print("📥 Document Upload Response: \(responseString)")
+        }
+        
+        // Handle response
+        guard let httpResponse = response as? HTTPURLResponse else {
+            return AlpacaDocumentUploadResult(
+                documentId: "",
+                uploadedAt: Date(),
+                status: .failed(error: "Invalid response"),
+                errorMessage: "Server returned invalid response"
+            )
+        }
+        
+        if (200...299).contains(httpResponse.statusCode) {
+            let documentResponse = try JSONDecoder().decode(AlpacaDocumentResponse.self, from: data)
+            print("✅ Document uploaded successfully: \(documentResponse.id)")
+            
+            return AlpacaDocumentUploadResult(
+                documentId: documentResponse.id,
+                uploadedAt: Date(),
+                status: .uploaded,
+                errorMessage: nil
+            )
+        } else {
+            // Parse error
+            let errorMessage = parseUploadError(data: data, statusCode: httpResponse.statusCode)
+            
+            return AlpacaDocumentUploadResult(
+                documentId: "",
+                uploadedAt: Date(),
+                status: .failed(error: errorMessage),
+                errorMessage: errorMessage
+            )
+        }
+    }
+    
+    /// Uploads both sides of an ID document
+    func uploadIdDocument(
+        accountId: String,
+        documentSubType: AlpacaDocumentSubType,
+        frontImageData: Data,
+        backImageData: Data?
+    ) async throws -> [AlpacaDocumentUploadResult] {
+        var results: [AlpacaDocumentUploadResult] = []
+        
+        // Upload front
+        let frontResult = try await uploadDocumentWithCompression(
+            accountId: accountId,
+            documentType: .identityVerification,
+            documentSubType: documentSubType,
+            imageData: frontImageData,
+            side: .front
+        )
+        results.append(frontResult)
+        
+        // Upload back if required and provided
+        if documentSubType.requiresBothSides, let backData = backImageData {
+            let backResult = try await uploadDocumentWithCompression(
+                accountId: accountId,
+                documentType: .identityVerification,
+                documentSubType: documentSubType,
+                imageData: backData,
+                side: .back
+            )
+            results.append(backResult)
+        }
+        
+        return results
+    }
+    
+    /// Uploads proof of address document
+    func uploadProofOfAddress(
+        accountId: String,
+        documentSubType: AlpacaDocumentSubType,
+        imageData: Data
+    ) async throws -> AlpacaDocumentUploadResult {
+        return try await uploadDocumentWithCompression(
+            accountId: accountId,
+            documentType: .addressVerification,
+            documentSubType: documentSubType,
+            imageData: imageData,
+            side: .front
+        )
+    }
+    
+    /// Processes image data for upload: validates, compresses, and converts if needed
+    private func processImageForUpload(_ imageData: Data) throws -> (Data, String) {
+        // Check if it's a PDF
+        if isPDF(imageData) {
+            // Validate PDF size
+            if imageData.count > DocumentImageSettings.maxFileSize {
+                throw DocumentUploadError.fileTooLarge(maxSize: DocumentImageSettings.maxFileSize)
+            }
+            return (imageData, "application/pdf")
+        }
+        
+        // Try to create a UIImage
+        guard let image = UIImage(data: imageData) else {
+            throw DocumentUploadError.invalidImageFormat
+        }
+        
+        // Resize if needed
+        let resizedImage = resizeImageIfNeeded(image, maxDimension: DocumentImageSettings.maxDimension)
+        
+        // Compress to JPEG with adaptive quality
+        var quality = DocumentImageSettings.compressionQuality
+        var compressedData = resizedImage.jpegData(compressionQuality: quality)
+        
+        // Progressively reduce quality if still too large
+        while let data = compressedData,
+              data.count > DocumentImageSettings.maxFileSize,
+              quality > 0.3 {
+            quality -= 0.1
+            compressedData = resizedImage.jpegData(compressionQuality: quality)
+        }
+        
+        guard let finalData = compressedData else {
+            throw DocumentUploadError.compressionFailed
+        }
+        
+        if finalData.count > DocumentImageSettings.maxFileSize {
+            throw DocumentUploadError.fileTooLarge(maxSize: DocumentImageSettings.maxFileSize)
+        }
+        
+        return (finalData, "image/jpeg")
+    }
+    
+    /// Resizes image if it exceeds maximum dimension
+    private func resizeImageIfNeeded(_ image: UIImage, maxDimension: CGFloat) -> UIImage {
+        let size = image.size
+        
+        // Check if resize is needed
+        guard size.width > maxDimension || size.height > maxDimension else {
+            return image
+        }
+        
+        // Calculate new size maintaining aspect ratio
+        let ratio = min(maxDimension / size.width, maxDimension / size.height)
+        let newSize = CGSize(width: size.width * ratio, height: size.height * ratio)
+        
+        // Render resized image
+        let renderer = UIGraphicsImageRenderer(size: newSize)
+        return renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: newSize))
+        }
+    }
+    
+    /// Checks if data is a PDF file
+    private func isPDF(_ data: Data) -> Bool {
+        // PDF magic bytes: %PDF
+        let pdfMagic: [UInt8] = [0x25, 0x50, 0x44, 0x46]
+        guard data.count >= 4 else { return false }
+        let header = Array(data.prefix(4))
+        return header == pdfMagic
+    }
+    
+    /// Parses upload error from response
+    private func parseUploadError(data: Data, statusCode: Int) -> String {
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            if let message = json["message"] as? String {
+                return message
+            }
+            if let code = json["code"] as? String {
+                return "Error: \(code)"
+            }
+        }
+        
+        switch statusCode {
+        case 400: return "Invalid document format or data"
+        case 401: return "Authentication failed"
+        case 403: return "Not authorized to upload documents"
+        case 404: return "Account not found"
+        case 413: return "File too large"
+        case 422: return "Invalid document type or content"
+        default: return "Upload failed (HTTP \(statusCode))"
+        }
+    }
+    
+    /// Gets the KYC/CIP verification status for an account
+    func getAccountStatus(accountId: String) async throws -> AlpacaAccountStatus {
+        print("🔍 Fetching account status for: \(accountId)")
+        
+        let url = URL(string: "\(brokerBaseURL)/accounts/\(accountId)")!
+        let request = try createBrokerRequest(url: url, method: "GET")
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        if let responseString = String(data: data, encoding: .utf8) {
+            print("📥 Account Status Response: \(responseString.prefix(500))")
+        }
+        
+        try validateResponse(response, data: data)
+        
+        let status = try JSONDecoder().decode(AlpacaAccountStatus.self, from: data)
+        print("✅ Account status: \(status.status)")
+        
+        return status
+    }
+    
+    /// Gets all documents for an account
+    func getDocuments(accountId: String) async throws -> [AlpacaDocumentResponse] {
+        let url = URL(string: "\(brokerBaseURL)/accounts/\(accountId)/documents")!
+        let request = try createBrokerRequest(url: url, method: "GET")
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validateResponse(response, data: data)
+        
+        return try JSONDecoder().decode([AlpacaDocumentResponse].self, from: data)
+    }
+    
+    /// Updates an existing account with additional information
+    func updateAccount(accountId: String, updates: [String: Any]) async throws {
+        print("📝 Updating account: \(accountId)")
+        
+        let url = URL(string: "\(brokerBaseURL)/accounts/\(accountId)")!
+        var request = try createBrokerRequest(url: url, method: "PATCH")
+        
+        request.httpBody = try JSONSerialization.data(withJSONObject: updates)
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        if let responseString = String(data: data, encoding: .utf8) {
+            print("📥 Update Response: \(responseString)")
+        }
+        
+        try validateResponse(response, data: data)
+        print("✅ Account updated successfully")
     }
     
     /// Fetches account details for a sub-account
@@ -981,6 +1617,189 @@ class AlpacaTradingService: ObservableObject {
             }
             
             throw URLError(.badServerResponse)
+        }
+    }
+    
+    // MARK: - Helper Methods for KYC Account Creation
+    
+    /// Formats date for Alpaca API (YYYY-MM-DD)
+    private func formatDate(_ date: Date?) -> String {
+        guard let date = date else { return "" }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: date)
+    }
+    
+    /// Formats phone number to E.164 format
+    private func formatPhoneNumber(_ phone: String) -> String {
+        let digits = phone.filter { $0.isNumber }
+        
+        // If already starts with +, use as-is
+        if phone.hasPrefix("+") && digits.count >= 10 {
+            return "+\(digits)"
+        }
+        
+        // Assume US number if 10 digits
+        if digits.count == 10 {
+            return "+1\(digits)"
+        }
+        
+        // Otherwise prepend + if not present
+        return digits.hasPrefix("1") ? "+\(digits)" : "+1\(digits)"
+    }
+    
+    /// Cleans tax ID by removing formatting
+    private func cleanTaxId(_ taxId: String) -> String {
+        return taxId.filter { $0.isNumber }
+    }
+    
+    /// Builds trusted contact from registration data
+    private func buildTrustedContact(from data: KYCRegistrationData) -> AlpacaTrustedContact? {
+        guard let name = data.trustedContactName, !name.isEmpty else {
+            return nil
+        }
+        
+        let nameParts = name.components(separatedBy: " ")
+        let firstName = nameParts.first ?? name
+        let lastName = nameParts.dropFirst().joined(separator: " ")
+        
+        return AlpacaTrustedContact(
+            given_name: firstName,
+            family_name: lastName.isEmpty ? firstName : lastName,
+            email_address: data.trustedContactEmail,
+            phone_number: data.trustedContactPhone
+        )
+    }
+    
+    /// Redacts sensitive information from log output
+    private func redactSensitiveInfo(_ input: String) -> String {
+        var output = input
+        
+        // Redact tax_id (SSN/ITIN)
+        let ssnPattern = #"\"tax_id\"\s*:\s*\"[^\"]+\""#
+        if let regex = try? NSRegularExpression(pattern: ssnPattern) {
+            output = regex.stringByReplacingMatches(
+                in: output,
+                range: NSRange(output.startIndex..., in: output),
+                withTemplate: "\"tax_id\": \"***REDACTED***\""
+            )
+        }
+        
+        // Redact date_of_birth
+        let dobPattern = #"\"date_of_birth\"\s*:\s*\"[^\"]+\""#
+        if let regex = try? NSRegularExpression(pattern: dobPattern) {
+            output = regex.stringByReplacingMatches(
+                in: output,
+                range: NSRange(output.startIndex..., in: output),
+                withTemplate: "\"date_of_birth\": \"****-**-**\""
+            )
+        }
+        
+        return output
+    }
+}
+
+// MARK: - Supporting Types
+
+/// Document side for multi-page documents
+enum DocumentSide: String {
+    case front = "front"
+    case back = "back"
+}
+
+/// Errors specific to document upload
+enum DocumentUploadError: Error, LocalizedError {
+    case invalidImageFormat
+    case compressionFailed
+    case fileTooLarge(maxSize: Int)
+    case uploadFailed(message: String)
+    
+    var errorDescription: String? {
+        switch self {
+        case .invalidImageFormat:
+            return "The image format is not supported. Please use JPEG, PNG, or PDF."
+        case .compressionFailed:
+            return "Failed to compress the image."
+        case .fileTooLarge(let maxSize):
+            let maxMB = maxSize / (1024 * 1024)
+            return "The file is too large. Maximum size is \(maxMB)MB."
+        case .uploadFailed(let message):
+            return message
+        }
+    }
+}
+
+/// Actions to take based on account status
+enum AccountStatusAction {
+    case showPendingVerification(message: String)
+    case showRequiredActions(actions: [AlpacaAccountCreationResult.RequiredAction])
+    case proceedToOnboarding(accountId: String)
+    case showRejection(reasons: [String], canAppeal: Bool)
+    
+    var title: String {
+        switch self {
+        case .showPendingVerification:
+            return "Verification in Progress"
+        case .showRequiredActions:
+            return "Action Required"
+        case .proceedToOnboarding:
+            return "Account Approved"
+        case .showRejection:
+            return "Application Status"
+        }
+    }
+}
+
+// MARK: - Net Worth Range Extensions
+
+extension NetWorthRange {
+    var minValue: Int {
+        switch self {
+        case .under50k: return 0
+        case .from50kTo100k: return 50001
+        case .from100kTo250k: return 100001
+        case .from250kTo500k: return 250001
+        case .from500kTo1m: return 500001
+        case .from1mTo5m: return 1000001
+        case .over5m: return 5000001
+        }
+    }
+    
+    var maxValue: Int? {
+        switch self {
+        case .under50k: return 50000
+        case .from50kTo100k: return 100000
+        case .from100kTo250k: return 250000
+        case .from250kTo500k: return 500000
+        case .from500kTo1m: return 1000000
+        case .from1mTo5m: return 5000000
+        case .over5m: return nil
+        }
+    }
+}
+
+extension LiquidNetWorthRange {
+    var minValue: Int {
+        switch self {
+        case .under25k: return 0
+        case .from25kTo50k: return 25001
+        case .from50kTo100k: return 50001
+        case .from100kTo250k: return 100001
+        case .from250kTo500k: return 250001
+        case .from500kTo1m: return 500001
+        case .over1m: return 1000001
+        }
+    }
+    
+    var maxValue: Int? {
+        switch self {
+        case .under25k: return 25000
+        case .from25kTo50k: return 50000
+        case .from50kTo100k: return 100000
+        case .from100kTo250k: return 250000
+        case .from250kTo500k: return 500000
+        case .from500kTo1m: return 1000000
+        case .over1m: return nil
         }
     }
 }
