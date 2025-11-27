@@ -1,7 +1,7 @@
 {
   "images" : [
     {
-      "filename" : "AppIcon 1.jpeg",
+      "filename" : "Fursa App Icon.png",
       "idiom" : "universal",
       "platform" : "ios",
       "size" : "1024x1024"
@@ -13,6 +13,7 @@
           "value" : "dark"
         }
       ],
+      "filename" : "Fursa AppIcon dark.png",
       "idiom" : "universal",
       "platform" : "ios",
       "size" : "1024x1024"
