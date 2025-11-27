@@ -198,6 +198,86 @@ final class TwilioVerifyService: ObservableObject {
         }
     }
     
+    // MARK: - Retry Methods
+    
+    /// Sends OTP with automatic retry for transient network failures
+    /// Uses exponential backoff between retries
+    /// - Parameters:
+    ///   - phoneNumber: Phone number in E.164 format
+    ///   - channel: Delivery channel (sms or call)
+    ///   - maxAttempts: Maximum number of attempts (default: 3)
+    /// - Returns: Verification SID on success
+    func sendOTPWithRetry(
+        to phoneNumber: String,
+        channel: VerificationChannel = .sms,
+        maxAttempts: Int = 3
+    ) async throws -> String {
+        var lastError: TwilioVerifyError?
+        
+        for attempt in 1...maxAttempts {
+            do {
+                let sid = try await sendOTP(to: phoneNumber, channel: channel)
+                return sid
+                
+            } catch let error as TwilioVerifyError {
+                lastError = error
+                print("⚠️ OTP send attempt \(attempt) failed: \(error.localizedDescription)")
+                
+                // Don't retry certain errors
+                guard error.isRetryable else {
+                    throw error
+                }
+                
+                // Wait before retrying with exponential backoff
+                if attempt < maxAttempts {
+                    let delaySeconds = pow(2.0, Double(attempt))
+                    print("   Retrying in \(Int(delaySeconds)) seconds...")
+                    try await Task.sleep(nanoseconds: UInt64(delaySeconds * 1_000_000_000))
+                }
+            }
+        }
+        
+        throw lastError ?? TwilioVerifyError.unknownError("Failed after \(maxAttempts) attempts")
+    }
+    
+    /// Verifies OTP with automatic retry for transient network failures
+    /// - Parameters:
+    ///   - phoneNumber: Phone number that received the OTP
+    ///   - code: 6-digit verification code
+    ///   - maxAttempts: Maximum number of attempts (default: 2 - fewer since incorrect codes use up attempts)
+    /// - Returns: True if verification successful
+    func verifyOTPWithRetry(
+        phoneNumber: String,
+        code: String,
+        maxAttempts: Int = 2
+    ) async throws -> Bool {
+        var lastError: TwilioVerifyError?
+        
+        for attempt in 1...maxAttempts {
+            do {
+                let success = try await verifyOTP(phoneNumber: phoneNumber, code: code)
+                return success
+                
+            } catch let error as TwilioVerifyError {
+                lastError = error
+                print("⚠️ OTP verify attempt \(attempt) failed: \(error.localizedDescription)")
+                
+                // Don't retry certain errors - incorrect code should not be retried automatically
+                guard error.isNetworkRetryable else {
+                    throw error
+                }
+                
+                // Wait before retrying
+                if attempt < maxAttempts {
+                    let delaySeconds = pow(2.0, Double(attempt))
+                    try await Task.sleep(nanoseconds: UInt64(delaySeconds * 1_000_000_000))
+                }
+            }
+        }
+        
+        throw lastError ?? TwilioVerifyError.unknownError("Verification failed after \(maxAttempts) attempts")
+    }
+    
     // MARK: - Cancel Verification
     
     /// Cancels an ongoing verification (optional cleanup)
@@ -228,31 +308,81 @@ final class TwilioVerifyService: ObservableObject {
     }
     
     /// Formats phone number to E.164 format
-    private func formatToE164(_ phone: String) -> String {
-        // Remove all non-numeric characters except leading +
+    /// Supports Kuwait (+965) as default, with fallback for US numbers
+    private func formatToE164(_ phone: String, defaultCountry: String = "KWT") -> String {
         var cleaned = phone.trimmingCharacters(in: .whitespaces)
         
-        // If already starts with +, keep it
+        // If already has + prefix, validate and return
         if cleaned.hasPrefix("+") {
-            let digits = cleaned.dropFirst().filter { $0.isNumber }
+            let digits = String(cleaned.dropFirst().filter { $0.isNumber })
             return "+\(digits)"
         }
         
         // Remove all non-digits
         let digits = cleaned.filter { $0.isNumber }
+        let digitString = String(digits)
         
-        // Assume US number if 10 digits
-        if digits.count == 10 {
-            return "+1\(digits)"
+        // Handle based on default country
+        switch defaultCountry {
+        case "KWT":
+            // Kuwait: 8 digits, country code +965
+            if digitString.count == 8 {
+                return "+965\(digitString)"
+            }
+            // Already includes country code
+            if digitString.count == 11 && digitString.hasPrefix("965") {
+                return "+\(digitString)"
+            }
+            
+        case "USA":
+            // US: 10 digits, country code +1
+            if digitString.count == 10 {
+                return "+1\(digitString)"
+            }
+            // Already includes country code
+            if digitString.count == 11 && digitString.hasPrefix("1") {
+                return "+\(digitString)"
+            }
+            
+        case "SAU":
+            // Saudi Arabia: 9 digits (without 0), country code +966
+            if digitString.count == 9 && digitString.hasPrefix("5") {
+                return "+966\(digitString)"
+            }
+            if digitString.count == 10 && digitString.hasPrefix("05") {
+                return "+966\(digitString.dropFirst())"
+            }
+            
+        case "ARE":
+            // UAE: 9 digits, country code +971
+            if digitString.count == 9 && digitString.hasPrefix("5") {
+                return "+971\(digitString)"
+            }
+            
+        case "QAT":
+            // Qatar: 8 digits, country code +974
+            if digitString.count == 8 {
+                return "+974\(digitString)"
+            }
+            
+        default:
+            break
         }
         
-        // If 11 digits starting with 1, assume US
-        if digits.count == 11 && digits.hasPrefix("1") {
-            return "+\(digits)"
+        // Fallback: if digits look like they include a known country code
+        if digitString.hasPrefix("965") && digitString.count == 11 {
+            return "+\(digitString)" // Kuwait with country code
+        }
+        if digitString.hasPrefix("1") && digitString.count == 11 {
+            return "+\(digitString)" // US with country code
         }
         
-        // Otherwise, add + prefix
-        return "+\(digits)"
+        // Default: assume Kuwait for 8 digits, otherwise add + prefix
+        if digitString.count == 8 {
+            return "+965\(digitString)"
+        }
+        
+        return "+\(digitString)"
     }
     
     /// Validates E.164 phone number format
@@ -400,13 +530,40 @@ enum TwilioVerifyError: Error, LocalizedError, Equatable {
         }
     }
     
-    /// Whether this is a retryable error
+    /// Whether this error can be retried (including user input errors)
     var isRetryable: Bool {
         switch self {
         case .incorrectCode, .invalidCode:
+            return true  // User can try entering a different code
+        case .serverError, .networkError, .rateLimitExceeded:
+            return true  // Transient errors that may resolve
+        default:
+            return false
+        }
+    }
+    
+    /// Whether this error is specifically a network/server issue that should be auto-retried
+    /// (Does NOT include incorrect code - we don't want to auto-retry wrong codes)
+    var isNetworkRetryable: Bool {
+        switch self {
+        case .serverError, .networkError:
             return true
         default:
             return false
+        }
+    }
+    
+    /// Suggested wait time before retrying (in seconds)
+    var suggestedRetryDelay: TimeInterval {
+        switch self {
+        case .rateLimitExceeded:
+            return 60  // Wait 1 minute for rate limits
+        case .serverError:
+            return 5   // Wait 5 seconds for server errors
+        case .networkError:
+            return 2   // Wait 2 seconds for network issues
+        default:
+            return 0
         }
     }
 }

@@ -31,6 +31,7 @@ extension Color {
     static let successGreen = Color(red: 0.063, green: 0.725, blue: 0.506) // #10B981
     static let errorRed = Color(red: 0.937, green: 0.267, blue: 0.267) // #EF4444
     static let warningYellow = Color(red: 1.0, green: 0.733, blue: 0.2) // #FFBB33
+    static let warningOrange = Color(red: 0.945, green: 0.541, blue: 0.114) // #F18A1D
     static let infoBlue = Color(red: 0.235, green: 0.639, blue: 0.973) // #3C82F6
 
     // MARK: - Gain/Loss Colors

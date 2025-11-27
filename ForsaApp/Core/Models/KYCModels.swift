@@ -22,21 +22,28 @@ struct KYCRegistrationData: Codable {
     // MARK: - Step 2: Personal Details
     var dateOfBirth: Date?
     var phoneNumber: String = ""
-    var citizenship: String = "USA"
-    var countryOfBirth: String = "USA"
+    var citizenship: String = "KWT"
+    var countryOfBirth: String = "KWT"
     
     // MARK: - Step 3: Address
     var streetAddress: String = ""
     var apartmentUnit: String?
     var city: String = ""
-    var state: String = ""
+    var state: String = ""  // Governorate for Kuwait
     var postalCode: String = ""
-    var country: String = "USA"
+    var country: String = "KWT"
+    
+    // MARK: - Kuwait-Specific Address Fields
+    var block: String = ""        // رقم القطعة - Block number
+    var building: String = ""     // المبنى - Building number/name
+    var floor: String?            // الطابق - Floor (optional)
+    var area: String = ""         // المنطقة - Area (e.g., Salmiya, Hawalli)
+    var governorate: String = ""  // المحافظة - Governorate
     
     // MARK: - Step 4: Tax & Financial
-    var taxId: String = ""  // SSN for US
-    var taxIdType: TaxIdType = .ssn
-    var countryOfTaxResidence: String = "USA"
+    var taxId: String = ""  // Civil ID for Kuwait
+    var taxIdType: TaxIdType = .kuwaitCivilId  // Default to Kuwait Civil ID for Kuwait users
+    var countryOfTaxResidence: String = "KWT"
     var fundingSources: [FundingSource] = []
     var annualIncome: IncomeRange?
     var netWorth: NetWorthRange?
@@ -54,6 +61,7 @@ struct KYCRegistrationData: Codable {
     var isPoliticallyExposed: Bool = false
     var politicalExposureContext: String?
     var immediateFamilyExposed: Bool = false
+    var immediateFamilyExposedContext: String?  // Relationship type: spouse, parent, child, sibling
     
     // MARK: - Step 6: Trusted Contact (Optional)
     var trustedContactName: String?
@@ -72,6 +80,30 @@ struct KYCRegistrationData: Codable {
     var lastUpdatedAt: Date = Date()
     var currentStep: RegistrationStep = .basicInfo
     var ipAddress: String?
+    
+    // MARK: - CodingKeys (Excludes sensitive data from persistence)
+    
+    /// Explicitly exclude password and taxId from Codable encoding
+    /// These should NEVER be persisted to UserDefaults
+    enum CodingKeys: String, CodingKey {
+        case email, firstName, lastName
+        case dateOfBirth, phoneNumber, citizenship, countryOfBirth
+        case streetAddress, apartmentUnit, city, state, postalCode, country
+        case block, building, floor, area, governorate  // Kuwait-specific address fields
+        // NOTE: taxId is intentionally EXCLUDED - stored in Keychain only
+        case taxIdType, countryOfTaxResidence
+        case fundingSources, annualIncome, netWorth, liquidNetWorth
+        case employmentStatus, employer, occupation, investmentExperience
+        case isControlPerson, controlPersonContext
+        case isAffiliatedWithExchange, affiliationContext
+        case isPoliticallyExposed, politicalExposureContext
+        case immediateFamilyExposed, immediateFamilyExposedContext
+        case trustedContactName, trustedContactEmail, trustedContactPhone
+        case agreedToTerms, agreedToPrivacy, agreedToAccountAgreement
+        case agreedToCustomerAgreement, agreedToMarginAgreement
+        case registrationStartedAt, lastUpdatedAt, currentStep, ipAddress
+        // NOTE: password is intentionally EXCLUDED - never persisted
+    }
     
     // MARK: - Computed Properties
     
@@ -107,7 +139,13 @@ struct KYCRegistrationData: Codable {
     }
     
     var isAddressComplete: Bool {
-        !streetAddress.isEmpty && !city.isEmpty && !state.isEmpty && !postalCode.isEmpty && !country.isEmpty
+        // For Kuwait, use Kuwait-specific address fields
+        if country == "KWT" {
+            return !block.isEmpty && !streetAddress.isEmpty && !building.isEmpty &&
+                   !area.isEmpty && !governorate.isEmpty
+        }
+        // For other countries, use standard address format
+        return !streetAddress.isEmpty && !city.isEmpty && !state.isEmpty && !postalCode.isEmpty && !country.isEmpty
     }
     
     var isTaxFinancialComplete: Bool {
@@ -120,7 +158,9 @@ struct KYCRegistrationData: Codable {
         let controlPersonValid = !isControlPerson || (controlPersonContext != nil && !controlPersonContext!.isEmpty)
         let affiliatedValid = !isAffiliatedWithExchange || (affiliationContext != nil && !affiliationContext!.isEmpty)
         let politicalValid = !isPoliticallyExposed || (politicalExposureContext != nil && !politicalExposureContext!.isEmpty)
-        return controlPersonValid && affiliatedValid && politicalValid
+        // EC-3: Require family relationship context when immediate family is exposed
+        let familyExposedValid = !immediateFamilyExposed || (immediateFamilyExposedContext != nil && !immediateFamilyExposedContext!.isEmpty)
+        return controlPersonValid && affiliatedValid && politicalValid && familyExposedValid
     }
     
     var completionPercentage: Double {
@@ -209,25 +249,42 @@ enum TaxIdType: String, Codable, CaseIterable {
     case itin = "USA_ITIN"
     case foreignPassport = "FOREIGN_PASSPORT"
     case foreignId = "FOREIGN_ID"
+    case kuwaitCivilId = "KUWAIT_CIVIL_ID"
     
     var displayName: String {
         switch self {
         case .ssn: return "Social Security Number (SSN)"
         case .itin: return "Individual Tax ID (ITIN)"
-        case .foreignPassport: return "Foreign Passport"
-        case .foreignId: return "Foreign Government ID"
+        case .foreignPassport: return "Passport Number"
+        case .foreignId: return "Government ID"
+        case .kuwaitCivilId: return "Kuwait Civil ID (الرقم المدني)"
         }
     }
     
     var placeholder: String {
         switch self {
         case .ssn, .itin: return "XXX-XX-XXXX"
+        case .kuwaitCivilId: return "123456789012"  // 12 digits
         case .foreignPassport, .foreignId: return "Enter ID number"
         }
     }
     
     var alpacaValue: String {
-        rawValue
+        // Map Kuwait Civil ID to foreign ID for Alpaca API
+        switch self {
+        case .kuwaitCivilId: return "FOREIGN_ID"
+        default: return rawValue
+        }
+    }
+    
+    /// Options available for Kuwait users
+    static var kuwaitOptions: [TaxIdType] {
+        [.kuwaitCivilId, .foreignPassport]
+    }
+    
+    /// Options available for US users
+    static var usOptions: [TaxIdType] {
+        [.ssn, .itin]
     }
 }
 
@@ -667,6 +724,32 @@ enum USState: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+// MARK: - Kuwait Governorates
+
+enum KuwaitGovernorate: String, Codable, CaseIterable, Identifiable {
+    case alAsimah = "Al Asimah"
+    case hawalli = "Hawalli"
+    case farwaniya = "Al Farwaniyah"
+    case mubarak = "Mubarak Al-Kabeer"
+    case ahmadi = "Al Ahmadi"
+    case jahra = "Al Jahra"
+    
+    var id: String { rawValue }
+    
+    var displayName: String { rawValue }
+    
+    var displayNameArabic: String {
+        switch self {
+        case .alAsimah: return "العاصمة"
+        case .hawalli: return "حولي"
+        case .farwaniya: return "الفروانية"
+        case .mubarak: return "مبارك الكبير"
+        case .ahmadi: return "الأحمدي"
+        case .jahra: return "الجهراء"
+        }
+    }
+}
+
 // MARK: - Country
 
 struct Country: Codable, Identifiable, Hashable {
@@ -676,31 +759,63 @@ struct Country: Codable, Identifiable, Hashable {
     
     var id: String { code }
     
+    /// Check if country is Kuwait
+    var isKuwait: Bool { code == "KWT" }
+    
+    /// Check if country is USA
+    var isUSA: Bool { code == "USA" }
+    
+    static let kuwait = Country(code: "KWT", name: "Kuwait", flag: "🇰🇼")
     static let usa = Country(code: "USA", name: "United States", flag: "🇺🇸")
     static let canada = Country(code: "CAN", name: "Canada", flag: "🇨🇦")
     static let uk = Country(code: "GBR", name: "United Kingdom", flag: "🇬🇧")
     
+    /// Primary country for the app (Kuwait-only)
+    static let primary = kuwait
+    
+    /// All supported countries - Kuwait is primary, GCC countries next, then others
     static let common: [Country] = [
+        // Kuwait first (primary market)
+        kuwait,
+        
+        // GCC countries (regional priority)
+        Country(code: "SAU", name: "Saudi Arabia", flag: "🇸🇦"),
+        Country(code: "ARE", name: "United Arab Emirates", flag: "🇦🇪"),
+        Country(code: "QAT", name: "Qatar", flag: "🇶🇦"),
+        Country(code: "BHR", name: "Bahrain", flag: "🇧🇭"),
+        Country(code: "OMN", name: "Oman", flag: "🇴🇲"),
+        
+        // Other Arab countries
+        Country(code: "EGY", name: "Egypt", flag: "🇪🇬"),
+        Country(code: "JOR", name: "Jordan", flag: "🇯🇴"),
+        Country(code: "LBN", name: "Lebanon", flag: "🇱🇧"),
+        Country(code: "IRQ", name: "Iraq", flag: "🇮🇶"),
+        Country(code: "SYR", name: "Syria", flag: "🇸🇾"),
+        Country(code: "PSE", name: "Palestine", flag: "🇵🇸"),
+        Country(code: "YEM", name: "Yemen", flag: "🇾🇪"),
+        
+        // South Asian countries (large expat communities in Kuwait)
+        Country(code: "IND", name: "India", flag: "🇮🇳"),
+        Country(code: "PAK", name: "Pakistan", flag: "🇵🇰"),
+        Country(code: "BGD", name: "Bangladesh", flag: "🇧🇩"),
+        Country(code: "LKA", name: "Sri Lanka", flag: "🇱🇰"),
+        Country(code: "NPL", name: "Nepal", flag: "🇳🇵"),
+        
+        // Southeast Asian countries (large expat communities)
+        Country(code: "PHL", name: "Philippines", flag: "🇵🇭"),
+        Country(code: "IDN", name: "Indonesia", flag: "🇮🇩"),
+        
+        // Western countries
         usa, canada, uk,
         Country(code: "DEU", name: "Germany", flag: "🇩🇪"),
         Country(code: "FRA", name: "France", flag: "🇫🇷"),
         Country(code: "AUS", name: "Australia", flag: "🇦🇺"),
-        Country(code: "JPN", name: "Japan", flag: "🇯🇵"),
-        Country(code: "CHN", name: "China", flag: "🇨🇳"),
-        Country(code: "IND", name: "India", flag: "🇮🇳"),
-        Country(code: "BRA", name: "Brazil", flag: "🇧🇷"),
-        Country(code: "MEX", name: "Mexico", flag: "🇲🇽"),
-        Country(code: "ARE", name: "United Arab Emirates", flag: "🇦🇪"),
-        Country(code: "SAU", name: "Saudi Arabia", flag: "🇸🇦"),
-        Country(code: "KWT", name: "Kuwait", flag: "🇰🇼"),
-        Country(code: "QAT", name: "Qatar", flag: "🇶🇦"),
-        Country(code: "EGY", name: "Egypt", flag: "🇪🇬"),
-        Country(code: "PAK", name: "Pakistan", flag: "🇵🇰"),
-        Country(code: "BGD", name: "Bangladesh", flag: "🇧🇩"),
-        Country(code: "IDN", name: "Indonesia", flag: "🇮🇩"),
-        Country(code: "MYS", name: "Malaysia", flag: "🇲🇾"),
-        Country(code: "TUR", name: "Turkey", flag: "🇹🇷"),
     ]
+    
+    /// Get country by code
+    static func byCode(_ code: String) -> Country? {
+        common.first { $0.code == code }
+    }
 }
 
 // MARK: - Persistence Key

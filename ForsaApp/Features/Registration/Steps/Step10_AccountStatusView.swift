@@ -8,13 +8,19 @@
 import SwiftUI
 
 /// Step 10: Account Status - Success/pending screen after account creation
+/// Polls Alpaca for real-time account status updates
 struct Step10_AccountStatusView: View {
     @ObservedObject var viewModel: RegistrationViewModel
     @EnvironmentObject var coordinator: AppCoordinator
     
-    @State private var status: AccountCreationStatus = .pending
     @State private var showConfetti = false
     @State private var animationProgress: CGFloat = 0
+    @State private var rotationAngle: Double = 0
+    
+    /// Computed status from view model
+    private var status: AccountStatusUIState {
+        viewModel.computedAccountStatus
+    }
     
     var body: some View {
         ZStack {
@@ -38,7 +44,7 @@ struct Step10_AccountStatusView: View {
             .padding(.horizontal, 24)
             .padding(.bottom, 34)
             
-            // Confetti overlay
+            // Confetti overlay (for approved status)
             if showConfetti {
                 ConfettiView()
                     .ignoresSafeArea()
@@ -46,24 +52,61 @@ struct Step10_AccountStatusView: View {
         }
         .navigationBarBackButtonHidden(true)
         .onAppear {
-            withAnimation(.easeOut(duration: 1.2)) {
-                animationProgress = 1
+            startStatusCheck()
+        }
+        .onDisappear {
+            viewModel.stopAccountStatusPolling()
+        }
+        .onChange(of: viewModel.computedAccountStatus) { _, newStatus in
+            handleStatusChange(newStatus)
+        }
+    }
+    
+    // MARK: - Setup
+    
+    private func startStatusCheck() {
+        // Animate entry
+        withAnimation(.easeOut(duration: 1.2)) {
+            animationProgress = 1
+        }
+        
+        // Start rotation animation for pending state
+        startPendingAnimation()
+        
+        // Start polling for account status
+        if viewModel.registrationComplete && viewModel.createdAccountId != nil {
+            viewModel.startAccountStatusPolling()
+        }
+    }
+    
+    private func startPendingAnimation() {
+        // Continuous rotation for pending spinner
+        withAnimation(.linear(duration: 2).repeatForever(autoreverses: false)) {
+            rotationAngle = 360
+        }
+    }
+    
+    private func handleStatusChange(_ newStatus: AccountStatusUIState) {
+        switch newStatus {
+        case .approved:
+            // Show celebration!
+            withAnimation(.spring(response: 0.5)) {
+                showConfetti = true
             }
             
-            // Simulate status check
-            if viewModel.registrationComplete {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    withAnimation(.spring(response: 0.5)) {
-                        status = .approved
-                        showConfetti = true
-                    }
-                    
-                    // Hide confetti after 3 seconds
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                        showConfetti = false
-                    }
+            // Hide confetti after 4 seconds
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+                withAnimation {
+                    showConfetti = false
                 }
             }
+            
+        case .rejected, .actionRequired:
+            // Stop rotation animation
+            rotationAngle = 0
+            
+        default:
+            break
         }
     }
     
@@ -74,7 +117,7 @@ struct Step10_AccountStatusView: View {
             Color.backgroundPrimary
                 .ignoresSafeArea()
             
-            // Animated gradient orbs
+            // Animated gradient orbs based on status
             GeometryReader { geometry in
                 Circle()
                     .fill(
@@ -101,23 +144,30 @@ struct Step10_AccountStatusView: View {
                 .stroke(status.accentColor.opacity(0.2), lineWidth: 4)
                 .frame(width: 160, height: 160)
             
-            // Progress ring
-            Circle()
-                .trim(from: 0, to: status == .pending ? 0.75 : 1)
-                .stroke(
-                    status.accentColor,
-                    style: StrokeStyle(lineWidth: 4, lineCap: .round)
-                )
-                .frame(width: 160, height: 160)
-                .rotationEffect(.degrees(-90))
-                .animation(
-                    status == .pending ?
-                    Animation.linear(duration: 1.5).repeatForever(autoreverses: false) :
-                    .spring(response: 0.6),
-                    value: status
-                )
+            // Progress ring - animates for pending states
+            if status == .pending || status == .unknown {
+                // Spinning progress ring
+                Circle()
+                    .trim(from: 0, to: 0.75)
+                    .stroke(
+                        status.accentColor,
+                        style: StrokeStyle(lineWidth: 4, lineCap: .round)
+                    )
+                    .frame(width: 160, height: 160)
+                    .rotationEffect(.degrees(rotationAngle - 90))
+            } else {
+                // Complete ring for final states
+                Circle()
+                    .trim(from: 0, to: 1)
+                    .stroke(
+                        status.accentColor,
+                        style: StrokeStyle(lineWidth: 4, lineCap: .round)
+                    )
+                    .frame(width: 160, height: 160)
+                    .rotationEffect(.degrees(-90))
+            }
             
-            // Inner circle with icon
+            // Inner circles
             Circle()
                 .fill(status.accentColor.opacity(0.1))
                 .frame(width: 120, height: 120)
@@ -126,10 +176,17 @@ struct Step10_AccountStatusView: View {
                 .fill(status.accentColor.opacity(0.15))
                 .frame(width: 90, height: 90)
             
-            Image(systemName: status.icon)
-                .font(.system(size: 44, weight: .medium))
-                .foregroundColor(status.accentColor)
-                .scaleEffect(animationProgress)
+            // Status icon or loading indicator
+            if viewModel.isPollingAccountStatus && status == .unknown {
+                ProgressView()
+                    .scaleEffect(1.5)
+                    .tint(status.accentColor)
+            } else {
+                Image(systemName: status.icon)
+                    .font(.system(size: 44, weight: .medium))
+                    .foregroundColor(status.accentColor)
+                    .scaleEffect(animationProgress)
+            }
         }
     }
     
@@ -151,9 +208,15 @@ struct Step10_AccountStatusView: View {
             
             // Status badge
             HStack(spacing: 8) {
-                Circle()
-                    .fill(status.accentColor)
-                    .frame(width: 8, height: 8)
+                if viewModel.isPollingAccountStatus {
+                    ProgressView()
+                        .scaleEffect(0.6)
+                        .tint(status.accentColor)
+                } else {
+                    Circle()
+                        .fill(status.accentColor)
+                        .frame(width: 8, height: 8)
+                }
                 
                 Text(status.badge)
                     .font(.caption1Medium)
@@ -163,6 +226,25 @@ struct Step10_AccountStatusView: View {
             .padding(.vertical, 8)
             .background(status.accentColor.opacity(0.1))
             .cornerRadius(20)
+            
+            // Polling info
+            if viewModel.isPollingAccountStatus {
+                Text("Checking status... (attempt \(viewModel.pollAttempts)/\(viewModel.maxPollAttempts))")
+                    .font(.caption1)
+                    .foregroundColor(.textTertiary)
+            }
+            
+            // Error message if any
+            if let error = viewModel.pollingError {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.caption1)
+                    Text(error)
+                        .font(.caption1)
+                }
+                .foregroundColor(.errorRed)
+                .padding(.top, 4)
+            }
             
             // Additional info based on status
             statusInfo
@@ -174,6 +256,22 @@ struct Step10_AccountStatusView: View {
     @ViewBuilder
     private var statusInfo: some View {
         switch status {
+        case .unknown:
+            // Loading state
+            VStack(spacing: 12) {
+                Text("Please wait...")
+                    .font(.calloutMedium)
+                    .foregroundColor(.textPrimary)
+                
+                Text("We're checking your account status with our verification systems.")
+                    .font(.caption1)
+                    .foregroundColor(.textSecondary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(20)
+            .background(Color.backgroundSecondary)
+            .cornerRadius(16)
+            
         case .pending:
             VStack(spacing: 12) {
                 Text("What happens next?")
@@ -181,9 +279,9 @@ struct Step10_AccountStatusView: View {
                     .foregroundColor(.textPrimary)
                 
                 VStack(alignment: .leading, spacing: 8) {
-                    StatusInfoRow(number: 1, text: "We verify your information")
-                    StatusInfoRow(number: 2, text: "You'll receive an email update")
-                    StatusInfoRow(number: 3, text: "Start investing once approved")
+                    StatusInfoRow(number: 1, text: "We verify your information", isComplete: true)
+                    StatusInfoRow(number: 2, text: "You'll receive an email update", isComplete: false)
+                    StatusInfoRow(number: 3, text: "Start investing once approved", isComplete: false)
                 }
             }
             .padding(20)
@@ -211,6 +309,41 @@ struct Step10_AccountStatusView: View {
             .background(Color.successGreen.opacity(0.1))
             .cornerRadius(16)
             
+        case .rejected:
+            VStack(spacing: 12) {
+                HStack(spacing: 12) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 20))
+                        .foregroundColor(.errorRed)
+                    
+                    Text("Application not approved")
+                        .font(.calloutMedium)
+                        .foregroundColor(.textPrimary)
+                }
+                
+                if !viewModel.rejectionReasons.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(viewModel.rejectionReasons, id: \.self) { reason in
+                            HStack(alignment: .top, spacing: 8) {
+                                Text("•")
+                                    .foregroundColor(.textSecondary)
+                                Text(reason)
+                                    .font(.caption1)
+                                    .foregroundColor(.textSecondary)
+                            }
+                        }
+                    }
+                } else {
+                    Text("Please contact support for more information about your application.")
+                        .font(.caption1)
+                        .foregroundColor(.textSecondary)
+                        .multilineTextAlignment(.center)
+                }
+            }
+            .padding(20)
+            .background(Color.errorRed.opacity(0.1))
+            .cornerRadius(16)
+            
         case .actionRequired:
             VStack(spacing: 12) {
                 HStack(spacing: 12) {
@@ -223,10 +356,18 @@ struct Step10_AccountStatusView: View {
                         .foregroundColor(.textPrimary)
                 }
                 
-                Text("Please check your email for instructions on how to complete your application.")
-                    .font(.caption1)
-                    .foregroundColor(.textSecondary)
-                    .multilineTextAlignment(.center)
+                if !viewModel.requiredActions.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(viewModel.requiredActions, id: \.type) { action in
+                            RequiredActionRow(action: action)
+                        }
+                    }
+                } else {
+                    Text("Please check your email for instructions on how to complete your application.")
+                        .font(.caption1)
+                        .foregroundColor(.textSecondary)
+                        .multilineTextAlignment(.center)
+                }
             }
             .padding(20)
             .background(Color.warningYellow.opacity(0.1))
@@ -239,13 +380,25 @@ struct Step10_AccountStatusView: View {
     private var actionButtons: some View {
         VStack(spacing: 12) {
             switch status {
+            case .unknown:
+                // Just waiting
+                EmptyView()
+                
             case .pending:
-                ForsaButton("Check Status", style: .outline, size: .large) {
-                    // Check status again
+                ForsaButton(
+                    "Check Status",
+                    style: .outline,
+                    size: .large,
+                    isLoading: viewModel.isPollingAccountStatus
+                ) {
+                    Task {
+                        await viewModel.checkAccountStatusOnce()
+                    }
                 }
                 
                 Button(action: {
-                    // Go to dashboard
+                    // Go to dashboard or home
+                    // coordinator.finishRegistration()
                 }) {
                     Text("Return to Home")
                         .font(.calloutMedium)
@@ -254,75 +407,52 @@ struct Step10_AccountStatusView: View {
                 
             case .approved:
                 ForsaButton("Continue to Risk Assessment", style: .primary, size: .large) {
-                    // Navigate to risk assessment
+                    // Navigate to risk assessment / onboarding
                     // coordinator.startOnboarding()
                 }
                 
                 Button(action: {
                     // Skip to dashboard
+                    // coordinator.skipToMain()
                 }) {
                     Text("Skip for now")
                         .font(.calloutMedium)
                         .foregroundColor(.textSecondary)
                 }
                 
+            case .rejected:
+                ForsaButton("Contact Support", style: .primary, size: .large) {
+                    // Open support
+                    openSupport()
+                }
+                
+                Button(action: {
+                    // Go back to start
+                    viewModel.clearProgress()
+                }) {
+                    Text("Start Over")
+                        .font(.calloutMedium)
+                        .foregroundColor(.textSecondary)
+                }
+                
             case .actionRequired:
                 ForsaButton("View Required Actions", style: .primary, size: .large) {
-                    // Show what's needed
+                    // Navigate to action items or open email
                 }
                 
                 ForsaButton("Contact Support", style: .outline, size: .large) {
-                    // Open support
+                    openSupport()
                 }
             }
         }
     }
-}
-
-// MARK: - Account Creation Status
-
-enum AccountCreationStatus {
-    case pending
-    case approved
-    case actionRequired
     
-    var title: String {
-        switch self {
-        case .pending: return "Account Under Review"
-        case .approved: return "Welcome to Forsa!"
-        case .actionRequired: return "Almost There"
-        }
-    }
+    // MARK: - Helpers
     
-    var subtitle: String {
-        switch self {
-        case .pending: return "We're verifying your information. This usually takes just a few minutes."
-        case .approved: return "Your account has been approved and is ready for investing."
-        case .actionRequired: return "We need a bit more information to complete your account setup."
-        }
-    }
-    
-    var badge: String {
-        switch self {
-        case .pending: return "PENDING REVIEW"
-        case .approved: return "APPROVED"
-        case .actionRequired: return "ACTION REQUIRED"
-        }
-    }
-    
-    var icon: String {
-        switch self {
-        case .pending: return "clock.fill"
-        case .approved: return "checkmark.circle.fill"
-        case .actionRequired: return "exclamationmark.circle.fill"
-        }
-    }
-    
-    var accentColor: Color {
-        switch self {
-        case .pending: return .primaryPurple
-        case .approved: return .successGreen
-        case .actionRequired: return .warningYellow
+    private func openSupport() {
+        // Open email or support page
+        if let url = URL(string: "mailto:support@forsa.app") {
+            UIApplication.shared.open(url)
         }
     }
 }
@@ -332,25 +462,67 @@ enum AccountCreationStatus {
 struct StatusInfoRow: View {
     let number: Int
     let text: String
+    var isComplete: Bool = false
     
     var body: some View {
         HStack(spacing: 12) {
             ZStack {
                 Circle()
-                    .fill(Color.primaryPurple.opacity(0.1))
+                    .fill(isComplete ? Color.successGreen : Color.primaryPurple.opacity(0.1))
                     .frame(width: 24, height: 24)
                 
-                Text("\(number)")
-                    .font(.caption1Medium)
-                    .foregroundColor(.primaryPurple)
+                if isComplete {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.white)
+                } else {
+                    Text("\(number)")
+                        .font(.caption1Medium)
+                        .foregroundColor(.primaryPurple)
+                }
             }
             
             Text(text)
                 .font(.callout)
-                .foregroundColor(.textSecondary)
+                .foregroundColor(isComplete ? .textPrimary : .textSecondary)
+                .strikethrough(isComplete, color: .textTertiary)
             
             Spacer()
         }
+    }
+}
+
+// MARK: - Required Action Row
+
+struct RequiredActionRow: View {
+    let action: AlpacaAccountCreationResult.RequiredAction
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: action.type.icon)
+                .font(.system(size: 16))
+                .foregroundColor(.warningYellow)
+                .frame(width: 24)
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text(action.type.displayName)
+                    .font(.caption1Medium)
+                    .foregroundColor(.textPrimary)
+                
+                Text(action.description)
+                    .font(.caption2)
+                    .foregroundColor(.textSecondary)
+            }
+            
+            Spacer()
+            
+            Image(systemName: "chevron.right")
+                .font(.caption2)
+                .foregroundColor(.textTertiary)
+        }
+        .padding(12)
+        .background(Color.backgroundCard)
+        .cornerRadius(8)
     }
 }
 
@@ -363,11 +535,12 @@ struct ConfettiView: View {
         GeometryReader { geometry in
             ZStack {
                 ForEach(particles) { particle in
-                    Circle()
+                    RoundedRectangle(cornerRadius: 2)
                         .fill(particle.color)
-                        .frame(width: particle.size, height: particle.size)
+                        .frame(width: particle.size.width, height: particle.size.height)
                         .position(particle.position)
                         .opacity(particle.opacity)
+                        .rotationEffect(.degrees(particle.rotation))
                 }
             }
             .onAppear {
@@ -378,23 +551,30 @@ struct ConfettiView: View {
     }
     
     private func createParticles(in size: CGSize) {
-        let colors: [Color] = [.primaryPurple, .primaryGreen, .primaryBlue, .warningYellow, .primaryOrange]
+        let colors: [Color] = [.primaryPurple, .primaryGreen, .primaryBlue, .warningYellow, .primaryOrange, .errorRed]
         
-        for _ in 0..<50 {
+        for _ in 0..<60 {
             let particle = ConfettiParticle(
                 position: CGPoint(x: CGFloat.random(in: 0...size.width), y: -20),
                 color: colors.randomElement() ?? .primaryPurple,
-                size: CGFloat.random(in: 6...12),
-                opacity: 1
+                size: CGSize(
+                    width: CGFloat.random(in: 6...12),
+                    height: CGFloat.random(in: 10...20)
+                ),
+                opacity: 1,
+                rotation: Double.random(in: 0...360)
             )
             particles.append(particle)
             
-            // Animate falling
+            // Animate falling with rotation
             let index = particles.count - 1
-            withAnimation(.easeIn(duration: Double.random(in: 1.5...3))) {
-                particles[index].position.y = size.height + 20
-                particles[index].position.x += CGFloat.random(in: -100...100)
+            let duration = Double.random(in: 2...4)
+            
+            withAnimation(.easeIn(duration: duration)) {
+                particles[index].position.y = size.height + 40
+                particles[index].position.x += CGFloat.random(in: -80...80)
                 particles[index].opacity = 0
+                particles[index].rotation += Double.random(in: 180...720)
             }
         }
     }
@@ -404,8 +584,9 @@ struct ConfettiParticle: Identifiable {
     let id = UUID()
     var position: CGPoint
     let color: Color
-    let size: CGFloat
+    let size: CGSize
     var opacity: Double
+    var rotation: Double
 }
 
 // MARK: - Preview
@@ -414,4 +595,3 @@ struct ConfettiParticle: Identifiable {
     Step10_AccountStatusView(viewModel: RegistrationViewModel())
         .environmentObject(AppCoordinator())
 }
-

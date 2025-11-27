@@ -29,6 +29,74 @@ struct AppConfig {
     struct Currency {
         // Fixed rate for MVP: 1 KWD = 3.25 USD
         static let kwdToUsdRate: Double = 3.25
+        
+        /// Primary display currency for Kuwait users
+        static let primaryCurrency = "KWD"
+        
+        /// Secondary currency (trading currency)
+        static let secondaryCurrency = "USD"
+        
+        // MARK: - Currency Conversion Helpers
+        
+        /// Convert USD to KWD
+        static func usdToKwd(_ usdAmount: Double) -> Double {
+            return usdAmount / kwdToUsdRate
+        }
+        
+        /// Convert KWD to USD
+        static func kwdToUsd(_ kwdAmount: Double) -> Double {
+            return kwdAmount * kwdToUsdRate
+        }
+        
+        // MARK: - Dual Currency Formatting
+        
+        /// Format amount showing KWD with USD equivalent
+        /// Example: "30.77 KWD (100.00 USD)"
+        static func formatDualCurrency(usdAmount: Double) -> String {
+            let kwdAmount = usdToKwd(usdAmount)
+            return String(format: "%.2f KWD (%.2f USD)", kwdAmount, usdAmount)
+        }
+        
+        /// Format amount showing KWD primary with USD in parentheses
+        /// Example: "٣٠.٧٧ د.ك ($100.00)"
+        static func formatDualCurrencyArabic(usdAmount: Double) -> String {
+            let kwdAmount = usdToKwd(usdAmount)
+            return String(format: "%.2f د.ك ($%.2f)", kwdAmount, usdAmount)
+        }
+        
+        /// Format just KWD amount from USD
+        static func formatKWD(fromUSD usdAmount: Double) -> String {
+            let kwdAmount = usdToKwd(usdAmount)
+            return String(format: "%.2f KWD", kwdAmount)
+        }
+        
+        /// Format just USD amount
+        static func formatUSD(_ usdAmount: Double) -> String {
+            return String(format: "$%.2f", usdAmount)
+        }
+        
+        /// Format with compact notation for large amounts
+        /// Example: "30.77K KWD (100K USD)"
+        static func formatDualCurrencyCompact(usdAmount: Double) -> String {
+            let kwdAmount = usdToKwd(usdAmount)
+            
+            if usdAmount >= 1_000_000 {
+                return String(format: "%.1fM KWD (%.1fM USD)", kwdAmount / 1_000_000, usdAmount / 1_000_000)
+            } else if usdAmount >= 1_000 {
+                return String(format: "%.1fK KWD (%.1fK USD)", kwdAmount / 1_000, usdAmount / 1_000)
+            } else {
+                return formatDualCurrency(usdAmount: usdAmount)
+            }
+        }
+        
+        /// Format portfolio value for display
+        static func formatPortfolioValue(usdAmount: Double, showBothCurrencies: Bool = true) -> String {
+            if showBothCurrencies {
+                return formatDualCurrency(usdAmount: usdAmount)
+            } else {
+                return formatKWD(fromUSD: usdAmount)
+            }
+        }
     }
     
     // MARK: - Twilio Verify API
@@ -40,15 +108,16 @@ struct AppConfig {
         
         // Twilio Account SID from: https://console.twilio.com/
         // Find this on your Twilio Console Dashboard
-        static let accountSid = "YOUR_TWILIO_ACCOUNT_SID"
+        static let recoveryCode = "41BD84A4GHCFYGW48T8T7U3Q"
+        static let accountSid = "AC6d19af252d14306685f4bcd87cd27ffa"
         
         // Twilio Auth Token from: https://console.twilio.com/
         // Find this on your Twilio Console Dashboard
-        static let authToken = "YOUR_TWILIO_AUTH_TOKEN"
+        static let authToken = "744c2584988f39133c561f3b7cdccd58"
         
         // Twilio Verify Service SID from: https://console.twilio.com/verify/services
         // Create a Verify Service and copy the Service SID
-        static let verifyServiceSid = "YOUR_TWILIO_VERIFY_SERVICE_SID"
+        static let verifyServiceSid = "VA8149770f7ed55f7339917fe88c7e0603"
         
         // OTP Configuration
         static let otpLength = 6

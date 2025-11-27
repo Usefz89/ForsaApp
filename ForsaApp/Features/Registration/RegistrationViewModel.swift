@@ -4,10 +4,12 @@
 //
 //  Created by AI Assistant on 11/26/25.
 //
+//  Main registration ViewModel for multi-step KYC flow
 
 import Foundation
 import SwiftUI
 import Combine
+import Darwin  // For getifaddrs (local IP detection)
 
 /// ViewModel for managing the multi-step KYC registration flow
 /// Handles state management, validation, progress tracking, and data persistence
@@ -50,9 +52,57 @@ class RegistrationViewModel: ObservableObject {
     @Published var otpRemainingAttempts: Int = 3
     @Published var otpCooldownSeconds: Int = 0
     
+    /// Phone Verification State
+    @Published var isPhoneVerified: Bool = false
+    @Published var otpSent: Bool = false
+    @Published var isSendingOTP: Bool = false
+    @Published var isVerifyingOTP: Bool = false
+    @Published var verificationError: String?
+    @Published var verificationSid: String?
+    
     /// Session timeout state
     @Published var showSessionTimeoutWarning: Bool = false
     @Published var sessionTimeoutSeconds: Int = 0
+    
+    // MARK: - Retry State
+    
+    /// Whether the last submission can be retried
+    @Published var canRetrySubmission: Bool = false
+    
+    /// The last error that occurred during submission (for retry logic)
+    @Published var lastSubmissionError: Error?
+    
+    /// Number of retry attempts made
+    @Published var retryAttempts: Int = 0
+    
+    // MARK: - Account Status Polling State
+    
+    /// Current account status from Alpaca
+    @Published var accountStatusResult: AlpacaAccountCreationResult?
+    
+    /// Whether we are currently polling for status
+    @Published var isPollingAccountStatus: Bool = false
+    
+    /// Number of poll attempts made
+    @Published var pollAttempts: Int = 0
+    
+    /// Maximum poll attempts before giving up
+    let maxPollAttempts: Int = 20
+    
+    /// Polling interval in seconds
+    let pollIntervalSeconds: TimeInterval = 15
+    
+    /// Error during polling
+    @Published var pollingError: String?
+    
+    /// Required actions from Alpaca (if any)
+    @Published var requiredActions: [AlpacaAccountCreationResult.RequiredAction] = []
+    
+    /// Rejection reasons (if rejected)
+    @Published var rejectionReasons: [String] = []
+    
+    /// Task handle for polling (for cancellation)
+    private var pollingTask: Task<Void, Never>?
     
     // MARK: - Dependencies
     
@@ -61,6 +111,7 @@ class RegistrationViewModel: ObservableObject {
     private let rateLimiter = RateLimiter.shared
     private let sessionManager = SessionTimeoutManager.shared
     private let encryption = SensitiveDataEncryption.shared
+    private let twilioService = TwilioVerifyService.shared
     
     private var cancellables = Set<AnyCancellable>()
     private var autoSaveTimer: Timer?
@@ -150,6 +201,24 @@ class RegistrationViewModel: ObservableObject {
                 self?.clearErrorForCurrentStep()
                 // Record activity for session timeout
                 self?.sessionManager.recordActivity()
+            }
+            .store(in: &cancellables)
+        
+        // Auto-fill employer name for self-employed users (EC-4 fix)
+        $registrationData
+            .map { $0.employmentStatus }
+            .removeDuplicates()
+            .sink { [weak self] status in
+                guard let self = self else { return }
+                if status == .selfEmployed {
+                    // Auto-fill employer name with user's full name if empty
+                    if self.registrationData.employer?.isEmpty ?? true {
+                        let fullName = self.registrationData.fullName
+                        if !fullName.isEmpty {
+                            self.registrationData.employer = fullName
+                        }
+                    }
+                }
             }
             .store(in: &cancellables)
     }
@@ -364,6 +433,11 @@ class RegistrationViewModel: ObservableObject {
             errors.append(phoneError)
         }
         
+        // Phone verification check - must be verified before proceeding
+        if !isPhoneVerified {
+            errors.append("Please verify your phone number")
+        }
+        
         // Citizenship
         if registrationData.citizenship.isEmpty {
             errors.append("Citizenship is required")
@@ -421,19 +495,33 @@ class RegistrationViewModel: ObservableObject {
     private func validateTaxFinancial() -> Bool {
         var errors: [String] = []
         
-        // SSN/Tax ID validation using RegistrationValidator
+        // ID validation based on type
         if registrationData.taxId.isEmpty {
-            errors.append("Tax ID is required")
-        } else if registrationData.taxIdType == .ssn || registrationData.taxIdType == .itin {
-            let ssnResult = RegistrationValidator.validateSSN(registrationData.taxId)
-            if let ssnError = ssnResult.errorMessage {
-                errors.append(ssnError)
-            }
+            errors.append(registrationData.taxIdType == .kuwaitCivilId ? "Civil ID is required" : "Tax ID is required")
         } else {
-            // For foreign IDs, just check length
-            let digits = registrationData.taxId.filter { $0.isNumber }
-            if digits.count < 5 {
-                errors.append("Please enter a valid \(registrationData.taxIdType.displayName)")
+            switch registrationData.taxIdType {
+            case .ssn:
+                let ssnResult = RegistrationValidator.validateSSN(registrationData.taxId)
+                if let ssnError = ssnResult.errorMessage {
+                    errors.append(ssnError)
+                }
+            case .itin:
+                let itinResult = RegistrationValidator.validateITIN(registrationData.taxId)
+                if let itinError = itinResult.errorMessage {
+                    errors.append(itinError)
+                }
+            case .kuwaitCivilId:
+                // Kuwait Civil ID: 12 digits
+                let civilIdResult = RegistrationValidator.validateKuwaitCivilId(registrationData.taxId)
+                if let civilIdError = civilIdResult.errorMessage {
+                    errors.append(civilIdError)
+                }
+            case .foreignPassport, .foreignId:
+                // For foreign IDs, just check minimum length
+                let cleanedId = registrationData.taxId.trimmingCharacters(in: .whitespacesAndNewlines)
+                if cleanedId.count < 5 {
+                    errors.append("Please enter a valid \(registrationData.taxIdType.displayName)")
+                }
             }
         }
         
@@ -590,32 +678,133 @@ class RegistrationViewModel: ObservableObject {
         registrationData.fundingSources.contains(source)
     }
     
-    // MARK: - OTP Request with Rate Limiting
+    // MARK: - OTP Phone Verification with Twilio
     
-    /// Request OTP with rate limiting protection
-    /// - Returns: Success or rate limit error
-    func requestOTP() async throws {
+    /// Send OTP verification code to user's phone number
+    /// Uses Twilio Verify API with rate limiting protection
+    /// - Parameter channel: Delivery channel (sms or call), defaults to sms
+    func sendOTP(channel: VerificationChannel = .sms) async {
         let identifier = registrationData.phoneNumber.filter { $0.isNumber }
         
         // Check rate limit
         guard rateLimiter.canRequestOTP(identifier: identifier) else {
             let remainingSeconds = Int(rateLimiter.timeUntilOTPReset(identifier: identifier) ?? 0)
-            throw RateLimitError.otpLimitExceeded(remainingSeconds: remainingSeconds)
+            verificationError = RateLimitError.otpLimitExceeded(remainingSeconds: remainingSeconds).localizedDescription
+            isOTPRateLimited = true
+            otpCooldownSeconds = remainingSeconds
+            return
         }
-        
-        // Record the attempt
-        rateLimiter.recordOTPRequest(identifier: identifier)
         
         // Update UI state
-        otpRemainingAttempts = rateLimiter.remainingOTPAttempts(identifier: identifier)
-        isOTPRateLimited = !rateLimiter.canRequestOTP(identifier: identifier)
+        isSendingOTP = true
+        verificationError = nil
         
-        if let cooldown = rateLimiter.timeUntilOTPReset(identifier: identifier) {
-            otpCooldownSeconds = Int(cooldown)
+        do {
+            // Send OTP via Twilio Verify
+            let sid = try await twilioService.sendOTP(to: registrationData.phoneNumber, channel: channel)
+            
+            // Record the attempt for rate limiting
+            rateLimiter.recordOTPRequest(identifier: identifier)
+            
+            // Update state on success
+            verificationSid = sid
+            otpSent = true
+            otpRemainingAttempts = rateLimiter.remainingOTPAttempts(identifier: identifier)
+            isOTPRateLimited = !rateLimiter.canRequestOTP(identifier: identifier)
+            
+            if let cooldown = rateLimiter.timeUntilOTPReset(identifier: identifier) {
+                otpCooldownSeconds = Int(cooldown)
+            }
+            
+            print("✅ OTP sent successfully to \(maskPhone(registrationData.phoneNumber))")
+            
+        } catch let error as TwilioVerifyError {
+            verificationError = error.localizedDescription
+            
+            // If max attempts reached, mark as rate limited
+            if case .maxSendAttemptsReached = error {
+                isOTPRateLimited = true
+            }
+            
+            print("❌ Failed to send OTP: \(error.localizedDescription)")
+            
+        } catch {
+            verificationError = "Failed to send verification code. Please try again."
+            print("❌ Unexpected error sending OTP: \(error)")
         }
         
-        // TODO: Implement actual OTP sending via API
-        // await otpService.sendOTP(to: registrationData.phoneNumber)
+        isSendingOTP = false
+    }
+    
+    /// Verify the OTP code entered by user
+    /// - Parameter code: 6-digit verification code
+    /// - Returns: True if verification successful
+    @discardableResult
+    func verifyOTP(code: String) async -> Bool {
+        // Validate code format
+        let cleanCode = code.filter { $0.isNumber }
+        guard cleanCode.count == 6 else {
+            verificationError = "Please enter a 6-digit verification code"
+            return false
+        }
+        
+        // Update UI state
+        isVerifyingOTP = true
+        verificationError = nil
+        
+        do {
+            // Verify OTP via Twilio
+            let success = try await twilioService.verifyOTP(
+                phoneNumber: registrationData.phoneNumber,
+                code: cleanCode
+            )
+            
+            if success {
+                isPhoneVerified = true
+                verificationError = nil
+                print("✅ Phone verified successfully!")
+                return true
+            } else {
+                verificationError = "Verification failed. Please try again."
+                return false
+            }
+            
+        } catch let error as TwilioVerifyError {
+            verificationError = error.localizedDescription
+            
+            // If should request new code, reset OTP state
+            if error.shouldRequestNewCode {
+                otpSent = false
+                verificationSid = nil
+            }
+            
+            print("❌ OTP verification failed: \(error.localizedDescription)")
+            return false
+            
+        } catch {
+            verificationError = "Verification failed. Please try again."
+            print("❌ Unexpected error verifying OTP: \(error)")
+            return false
+        }
+    }
+    
+    /// Resend OTP to user's phone
+    /// - Parameter channel: Delivery channel (sms or call)
+    func resendOTP(channel: VerificationChannel = .sms) async {
+        // Reset state
+        verificationSid = nil
+        
+        // Send new OTP
+        await sendOTP(channel: channel)
+    }
+    
+    /// Reset phone verification state (e.g., when changing phone number)
+    func resetPhoneVerification() {
+        otpSent = false
+        isPhoneVerified = false
+        verificationError = nil
+        verificationSid = nil
+        twilioService.reset()
     }
     
     /// Get formatted cooldown time for OTP
@@ -625,11 +814,25 @@ class RegistrationViewModel: ObservableObject {
         return String(format: "%d:%02d", minutes, seconds)
     }
     
+    /// Mask phone number for logging (privacy)
+    private func maskPhone(_ phone: String) -> String {
+        let digits = phone.filter { $0.isNumber }
+        guard digits.count > 4 else { return "***" }
+        let lastFour = digits.suffix(4)
+        return "***\(lastFour)"
+    }
+    
     // MARK: - Submission
     
     /// Submit the registration to Alpaca
     /// Implements secure data handling and rate limiting
     func submitRegistration() async {
+        // Security check: Abort if session has timed out
+        guard !sessionManager.hasTimedOut else {
+            handleSessionTimeout()
+            return
+        }
+        
         guard validateAll() else {
             showError = true
             errorMessage = "Please complete all required fields"
@@ -661,6 +864,15 @@ class RegistrationViewModel: ObservableObject {
             
             // Create account via Alpaca
             let accountId = try await createAlpacaAccount()
+            
+            // Security check: If session timed out during API call, abort and clear data
+            guard !sessionManager.hasTimedOut else {
+                // Clear any data that was retrieved/created
+                keychainStorage.clearAllSensitiveData()
+                handleSessionTimeout()
+                isLoading = false
+                return
+            }
             
             // ========== SECURITY: Clear Sensitive Data After Submission ==========
             
@@ -695,12 +907,185 @@ class RegistrationViewModel: ObservableObject {
             createdAccountId = accountId
             registrationComplete = true
             
+        } catch let alpacaError as AlpacaAPIError {
+            // Handle Alpaca-specific errors with user-friendly messages
+            errorMessage = alpacaError.localizedDescription
+            showError = true
+            
+            // Store the error type for potential retry
+            lastSubmissionError = alpacaError
+            canRetrySubmission = alpacaError.isRetryable
+            
         } catch let alpacaError {
             errorMessage = alpacaError.localizedDescription
             showError = true
+            
+            // Check if this might be a network error that's retryable
+            canRetrySubmission = isRetryableError(alpacaError)
+            lastSubmissionError = alpacaError
         }
         
         isLoading = false
+    }
+    
+    /// Submit registration with automatic retry for transient failures
+    /// Uses exponential backoff for retries
+    /// - Parameter maxAttempts: Maximum number of attempts (default: 3)
+    func submitRegistrationWithRetry(maxAttempts: Int = 3) async {
+        var lastError: Error?
+        var attemptCount = 0
+        
+        isLoading = true
+        showError = false
+        
+        for attempt in 1...maxAttempts {
+            attemptCount = attempt
+            
+            do {
+                try await performRegistrationSubmission()
+                // Success - exit the retry loop
+                isLoading = false
+                return
+                
+            } catch let error as AlpacaAPIError {
+                lastError = error
+                print("⚠️ Registration attempt \(attempt) failed: \(error.localizedDescription)")
+                
+                // Don't retry non-retryable errors
+                guard error.isRetryable else {
+                    errorMessage = error.localizedDescription
+                    showError = true
+                    isLoading = false
+                    canRetrySubmission = false
+                    return
+                }
+                
+                // Wait before retrying with exponential backoff
+                if attempt < maxAttempts {
+                    let delaySeconds = pow(2.0, Double(attempt))
+                    print("   Retrying in \(Int(delaySeconds)) seconds...")
+                    try? await Task.sleep(nanoseconds: UInt64(delaySeconds * 1_000_000_000))
+                }
+                
+            } catch {
+                lastError = error
+                print("⚠️ Registration attempt \(attempt) failed: \(error.localizedDescription)")
+                
+                // Check if retryable
+                guard isRetryableError(error) else {
+                    errorMessage = error.localizedDescription
+                    showError = true
+                    isLoading = false
+                    canRetrySubmission = false
+                    return
+                }
+                
+                // Wait before retrying
+                if attempt < maxAttempts {
+                    let delaySeconds = pow(2.0, Double(attempt))
+                    try? await Task.sleep(nanoseconds: UInt64(delaySeconds * 1_000_000_000))
+                }
+            }
+        }
+        
+        // All attempts failed
+        isLoading = false
+        showError = true
+        canRetrySubmission = true
+        
+        if let alpacaError = lastError as? AlpacaAPIError {
+            errorMessage = "\(alpacaError.localizedDescription)\n\nFailed after \(attemptCount) attempts. Tap to retry."
+        } else {
+            errorMessage = (lastError?.localizedDescription ?? "Registration failed") + "\n\nFailed after \(attemptCount) attempts. Tap to retry."
+        }
+    }
+    
+    /// Internal submission logic that throws errors for retry handling
+    private func performRegistrationSubmission() async throws {
+        // Security check: Abort if session has timed out
+        guard !sessionManager.hasTimedOut else {
+            handleSessionTimeout()
+            throw AlpacaAPIError.networkError("Session timed out")
+        }
+        
+        guard validateAll() else {
+            throw AlpacaAPIError.validationFailed("Please complete all required fields")
+        }
+        
+        // Get IP address for agreements
+        let ipAddress = await getIPAddress()
+        registrationData.ipAddress = ipAddress
+        
+        // Check account creation rate limit
+        guard rateLimiter.canCreateAccount(ipAddress: ipAddress) else {
+            let remainingSeconds = Int(rateLimiter.timeUntilOTPReset(identifier: "account_\(ipAddress)") ?? 3600)
+            throw RateLimitError.accountCreationLimitExceeded(remainingSeconds: remainingSeconds)
+        }
+        
+        // Record account creation attempt
+        rateLimiter.recordAccountCreation(ipAddress: ipAddress)
+        
+        // Retrieve SSN from secure Keychain storage
+        if let storedSSN = keychainStorage.retrieveTaxId() {
+            registrationData.taxId = storedSSN
+        }
+        
+        // Create account via Alpaca (throws on failure)
+        let accountId = try await createAlpacaAccount()
+        
+        // Security check: If session timed out during API call, abort
+        guard !sessionManager.hasTimedOut else {
+            keychainStorage.clearAllSensitiveData()
+            handleSessionTimeout()
+            throw AlpacaAPIError.networkError("Session timed out during registration")
+        }
+        
+        // ========== SECURITY: Clear Sensitive Data After Submission ==========
+        keychainStorage.deleteTaxId()
+        keychainStorage.deleteSSN()
+        SensitiveFieldCleaner.clearRegistrationData(&registrationData)
+        
+        var tempPassword = registrationData.password
+        SensitiveFieldCleaner.clearString(&tempPassword)
+        registrationData.password = ""
+        
+        var tempConfirm = confirmPassword
+        SensitiveFieldCleaner.clearString(&tempConfirm)
+        confirmPassword = ""
+        
+        KYCRegistrationData.clear()
+        // =======================================================================
+        
+        // Store account ID
+        UserDefaults.standard.set(accountId, forKey: "alpaca_account_id")
+        
+        // Stop session timeout monitoring
+        sessionManager.stopTimer()
+        
+        createdAccountId = accountId
+        registrationComplete = true
+        canRetrySubmission = false
+    }
+    
+    /// Determines if an error is potentially recoverable by retrying
+    private func isRetryableError(_ error: Error) -> Bool {
+        // Check for URL errors that indicate network issues
+        if let urlError = error as? URLError {
+            switch urlError.code {
+            case .timedOut, .cannotConnectToHost, .networkConnectionLost,
+                 .notConnectedToInternet, .dnsLookupFailed, .cannotFindHost:
+                return true
+            default:
+                return false
+            }
+        }
+        
+        // Check for Alpaca API errors
+        if let alpacaError = error as? AlpacaAPIError {
+            return alpacaError.isRetryable
+        }
+        
+        return false
     }
     
     private func createAlpacaAccount() async throws -> String {
@@ -771,10 +1156,251 @@ class RegistrationViewModel: ObservableObject {
         )
     }
     
+    /// Fetches the client's public IP address
+    /// Required by Alpaca for compliance and agreement signing
     private func getIPAddress() async -> String {
-        // In production, this would fetch the real IP
-        // For now, return placeholder
-        return "127.0.0.1"
+        // Try multiple IP detection services for redundancy
+        let ipServices = [
+            "https://api.ipify.org",
+            "https://ipinfo.io/ip",
+            "https://checkip.amazonaws.com"
+        ]
+        
+        for serviceURL in ipServices {
+            do {
+                guard let url = URL(string: serviceURL) else { continue }
+                
+                var request = URLRequest(url: url)
+                request.timeoutInterval = 5  // 5 second timeout
+                request.httpMethod = "GET"
+                
+                let (data, response) = try await URLSession.shared.data(for: request)
+                
+                guard let httpResponse = response as? HTTPURLResponse,
+                      (200...299).contains(httpResponse.statusCode),
+                      let ipString = String(data: data, encoding: .utf8)?
+                        .trimmingCharacters(in: .whitespacesAndNewlines) else {
+                    continue
+                }
+                
+                // Validate IP format (basic check for IPv4 or IPv6)
+                if isValidIPAddress(ipString) {
+                    print("✅ IP Address detected: \(ipString) (via \(serviceURL))")
+                    return ipString
+                }
+            } catch {
+                print("⚠️ IP detection failed for \(serviceURL): \(error.localizedDescription)")
+                continue
+            }
+        }
+        
+        // Fallback to local device IP if external services fail
+        if let localIP = getLocalIPAddress() {
+            print("⚠️ Using local IP as fallback: \(localIP)")
+            return localIP
+        }
+        
+        // Last resort fallback
+        print("⚠️ IP detection failed, using fallback")
+        return "0.0.0.0"
+    }
+    
+    /// Validates IP address format (IPv4 or IPv6)
+    private func isValidIPAddress(_ ip: String) -> Bool {
+        // IPv4 pattern
+        let ipv4Pattern = "^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
+        // IPv6 pattern (simplified)
+        let ipv6Pattern = "^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$|^::$|^([0-9a-fA-F]{1,4}:)*:[0-9a-fA-F]{1,4}$"
+        
+        let ipv4Regex = try? NSRegularExpression(pattern: ipv4Pattern)
+        let ipv6Regex = try? NSRegularExpression(pattern: ipv6Pattern)
+        
+        let range = NSRange(ip.startIndex..., in: ip)
+        
+        return ipv4Regex?.firstMatch(in: ip, range: range) != nil ||
+               ipv6Regex?.firstMatch(in: ip, range: range) != nil
+    }
+    
+    /// Gets local device IP address as fallback
+    private func getLocalIPAddress() -> String? {
+        var address: String?
+        var ifaddr: UnsafeMutablePointer<ifaddrs>?
+        
+        guard getifaddrs(&ifaddr) == 0, let firstAddr = ifaddr else {
+            return nil
+        }
+        
+        defer { freeifaddrs(ifaddr) }
+        
+        for ptr in sequence(first: firstAddr, next: { $0.pointee.ifa_next }) {
+            let interface = ptr.pointee
+            let addrFamily = interface.ifa_addr.pointee.sa_family
+            
+            if addrFamily == UInt8(AF_INET) {  // IPv4
+                let name = String(cString: interface.ifa_name)
+                if name == "en0" || name == "pdp_ip0" {  // WiFi or cellular
+                    var hostname = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+                    getnameinfo(interface.ifa_addr, socklen_t(interface.ifa_addr.pointee.sa_len),
+                              &hostname, socklen_t(hostname.count),
+                              nil, socklen_t(0), NI_NUMERICHOST)
+                    address = String(cString: hostname)
+                    break
+                }
+            }
+        }
+        
+        return address
+    }
+    
+    // MARK: - Account Status Polling
+    
+    /// Starts polling for account status updates after registration
+    /// Call this from Step10_AccountStatusView when it appears
+    func startAccountStatusPolling() {
+        guard let accountId = createdAccountId else {
+            pollingError = "No account ID available"
+            return
+        }
+        
+        // Cancel any existing polling task
+        stopAccountStatusPolling()
+        
+        isPollingAccountStatus = true
+        pollAttempts = 0
+        pollingError = nil
+        
+        print("🔄 Starting account status polling for: \(accountId)")
+        
+        pollingTask = Task {
+            await pollAccountStatusLoop(accountId: accountId)
+        }
+    }
+    
+    /// Stops the polling loop
+    func stopAccountStatusPolling() {
+        pollingTask?.cancel()
+        pollingTask = nil
+        isPollingAccountStatus = false
+        print("⏹️ Stopped account status polling")
+    }
+    
+    /// The main polling loop
+    private func pollAccountStatusLoop(accountId: String) async {
+        while !Task.isCancelled && pollAttempts < maxPollAttempts {
+            pollAttempts += 1
+            print("📊 Poll attempt \(pollAttempts)/\(maxPollAttempts) for account: \(accountId)")
+            
+            do {
+                // Check account status via Alpaca
+                let result = try await alpacaService.checkAccountStatus(accountId: accountId)
+                
+                // Update state on main actor
+                await MainActor.run {
+                    self.accountStatusResult = result
+                    self.requiredActions = result.requiredActions
+                    self.rejectionReasons = result.rejectionReasons ?? []
+                }
+                
+                print("📊 Account status: \(result.status.displayTitle)")
+                
+                // Check if we should stop polling
+                switch result.status {
+                case .approved:
+                    print("✅ Account approved!")
+                    await MainActor.run {
+                        self.isPollingAccountStatus = false
+                    }
+                    return
+                    
+                case .rejected:
+                    print("❌ Account rejected")
+                    await MainActor.run {
+                        self.isPollingAccountStatus = false
+                        self.pollingError = "Account application was rejected"
+                    }
+                    return
+                    
+                case .actionRequired:
+                    print("⚠️ Action required - stopping poll")
+                    await MainActor.run {
+                        self.isPollingAccountStatus = false
+                    }
+                    return
+                    
+                case .submitted, .pendingReview:
+                    // Continue polling
+                    print("⏳ Status still pending, will poll again...")
+                }
+                
+            } catch {
+                print("❌ Poll error: \(error.localizedDescription)")
+                await MainActor.run {
+                    self.pollingError = error.localizedDescription
+                }
+            }
+            
+            // Wait before next poll (unless cancelled)
+            if !Task.isCancelled && pollAttempts < maxPollAttempts {
+                do {
+                    try await Task.sleep(nanoseconds: UInt64(pollIntervalSeconds * 1_000_000_000))
+                } catch {
+                    // Task was cancelled during sleep
+                    break
+                }
+            }
+        }
+        
+        // Polling ended
+        await MainActor.run {
+            self.isPollingAccountStatus = false
+            if self.pollAttempts >= self.maxPollAttempts && self.accountStatusResult?.status != .approved {
+                print("⏰ Max poll attempts reached")
+            }
+        }
+    }
+    
+    /// Manually check account status once (without polling loop)
+    func checkAccountStatusOnce() async {
+        guard let accountId = createdAccountId else {
+            pollingError = "No account ID available"
+            return
+        }
+        
+        isPollingAccountStatus = true
+        pollingError = nil
+        
+        do {
+            let result = try await alpacaService.checkAccountStatus(accountId: accountId)
+            accountStatusResult = result
+            requiredActions = result.requiredActions
+            rejectionReasons = result.rejectionReasons ?? []
+            
+        } catch {
+            pollingError = error.localizedDescription
+        }
+        
+        isPollingAccountStatus = false
+    }
+    
+    /// Get the computed UI status from the Alpaca result
+    var computedAccountStatus: AccountStatusUIState {
+        guard let result = accountStatusResult else {
+            if registrationComplete && createdAccountId != nil {
+                return .pending
+            }
+            return .unknown
+        }
+        
+        switch result.status {
+        case .approved:
+            return .approved
+        case .rejected:
+            return .rejected
+        case .actionRequired:
+            return .actionRequired
+        case .submitted, .pendingReview:
+            return .pending
+        }
     }
     
     // MARK: - Secure SSN Storage
@@ -828,7 +1454,6 @@ extension RegistrationViewModel {
         }
         
         // For completed steps, validate them
-        let originalStep = currentStep
         let isValid: Bool
         
         switch step {
@@ -884,3 +1509,63 @@ enum StepValidationStatus {
     }
 }
 
+// MARK: - Account Status UI State
+
+/// UI state for account status display in Step10
+enum AccountStatusUIState {
+    case unknown
+    case pending
+    case approved
+    case rejected
+    case actionRequired
+    
+    var title: String {
+        switch self {
+        case .unknown: return "Checking Status..."
+        case .pending: return "Account Under Review"
+        case .approved: return "Welcome to Forsa!"
+        case .rejected: return "Application Not Approved"
+        case .actionRequired: return "Almost There"
+        }
+    }
+    
+    var subtitle: String {
+        switch self {
+        case .unknown: return "Please wait while we check your account status."
+        case .pending: return "We're verifying your information. This usually takes just a few minutes."
+        case .approved: return "Your account has been approved and is ready for investing."
+        case .rejected: return "Unfortunately, we couldn't approve your application at this time."
+        case .actionRequired: return "We need a bit more information to complete your account setup."
+        }
+    }
+    
+    var badge: String {
+        switch self {
+        case .unknown: return "CHECKING"
+        case .pending: return "PENDING REVIEW"
+        case .approved: return "APPROVED"
+        case .rejected: return "NOT APPROVED"
+        case .actionRequired: return "ACTION REQUIRED"
+        }
+    }
+    
+    var icon: String {
+        switch self {
+        case .unknown: return "hourglass"
+        case .pending: return "clock.fill"
+        case .approved: return "checkmark.circle.fill"
+        case .rejected: return "xmark.circle.fill"
+        case .actionRequired: return "exclamationmark.circle.fill"
+        }
+    }
+    
+    var accentColor: Color {
+        switch self {
+        case .unknown: return .textTertiary
+        case .pending: return .primaryPurple
+        case .approved: return .successGreen
+        case .rejected: return .errorRed
+        case .actionRequired: return .warningYellow
+        }
+    }
+}

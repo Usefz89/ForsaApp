@@ -147,11 +147,23 @@ struct Step7_DisclosuresView: View {
                     infoText: ""
                 )
                 .transition(.opacity.combined(with: .move(edge: .top)))
+                
+                // EC-3: Family Relationship Context
+                if viewModel.registrationData.immediateFamilyExposed {
+                    FamilyRelationshipPicker(
+                        selectedRelationship: Binding(
+                            get: { viewModel.registrationData.immediateFamilyExposedContext ?? "" },
+                            set: { viewModel.registrationData.immediateFamilyExposedContext = $0.isEmpty ? nil : $0 }
+                        )
+                    )
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
             }
         }
         .animation(.spring(response: 0.4, dampingFraction: 0.8), value: viewModel.registrationData.isControlPerson)
         .animation(.spring(response: 0.4, dampingFraction: 0.8), value: viewModel.registrationData.isAffiliatedWithExchange)
         .animation(.spring(response: 0.4, dampingFraction: 0.8), value: viewModel.registrationData.isPoliticallyExposed)
+        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: viewModel.registrationData.immediateFamilyExposed)
     }
     
     // MARK: - Regulatory Info
@@ -186,8 +198,11 @@ struct Step7_DisclosuresView: View {
             !(viewModel.registrationData.affiliationContext?.isEmpty ?? true)
         let politicalValid = !viewModel.registrationData.isPoliticallyExposed ||
             !(viewModel.registrationData.politicalExposureContext?.isEmpty ?? true)
+        // EC-3: Require family relationship context when immediate family is exposed
+        let familyExposedValid = !viewModel.registrationData.immediateFamilyExposed ||
+            !(viewModel.registrationData.immediateFamilyExposedContext?.isEmpty ?? true)
         
-        return controlValid && affiliationValid && politicalValid
+        return controlValid && affiliationValid && politicalValid && familyExposedValid
     }
 }
 
@@ -347,6 +362,87 @@ struct DisclosureInfoSheet: View {
             .padding(.bottom, 34)
         }
         .background(Color.backgroundPrimary)
+    }
+}
+
+// MARK: - Family Relationship Picker
+
+/// Picker for selecting the family relationship type for PEP disclosures
+struct FamilyRelationshipPicker: View {
+    @Binding var selectedRelationship: String
+    
+    private let relationships = [
+        ("spouse", "Spouse", "heart.fill"),
+        ("parent", "Parent", "person.fill"),
+        ("child", "Child", "figure.and.child.holdinghands"),
+        ("sibling", "Sibling", "person.2.fill"),
+        ("in_law", "In-Law", "person.2.wave.2.fill"),
+        ("other", "Other Relative", "person.3.fill")
+    ]
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("What is their relationship to you?")
+                .font(.caption1)
+                .foregroundColor(.textSecondary)
+            
+            LazyVGrid(columns: [
+                GridItem(.flexible()),
+                GridItem(.flexible())
+            ], spacing: 10) {
+                ForEach(relationships, id: \.0) { relationship in
+                    RelationshipOptionButton(
+                        value: relationship.0,
+                        label: relationship.1,
+                        icon: relationship.2,
+                        isSelected: selectedRelationship == relationship.0,
+                        action: {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                selectedRelationship = relationship.0
+                            }
+                        }
+                    )
+                }
+            }
+        }
+        .padding(.leading, 38) // Indent to align with checkbox content
+    }
+}
+
+/// Individual relationship option button
+struct RelationshipOptionButton: View {
+    let value: String
+    let label: String
+    let icon: String
+    let isSelected: Bool
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(isSelected ? .white : .primaryPurple)
+                
+                Text(label)
+                    .font(.caption)
+                    .fontWeight(.medium)
+                    .foregroundColor(isSelected ? .white : .textPrimary)
+                
+                Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(isSelected ? Color.primaryPurple : Color.backgroundCard)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(isSelected ? Color.primaryPurple : Color.borderPrimary, lineWidth: isSelected ? 2 : 1)
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
     }
 }
 

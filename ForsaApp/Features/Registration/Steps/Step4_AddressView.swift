@@ -7,16 +7,24 @@
 
 import SwiftUI
 
-/// Step 4: Home Address - Street address, city, state, ZIP, country
+/// Step 4: Home Address - Street address, city, governorate/state, postal code, country
+/// Optimized for Kuwait customers
 struct Step4_AddressView: View {
     @ObservedObject var viewModel: RegistrationViewModel
     
-    @State private var showStatePicker = false
+    @State private var showGovernoratePicker = false
     @State private var showCountryPicker = false
     @FocusState private var focusedField: Field?
     
     enum Field: Hashable {
         case street, unit, city, zip
+        // Kuwait-specific fields
+        case block, building, floor, area
+    }
+    
+    /// Whether the selected country is Kuwait
+    private var isKuwait: Bool {
+        viewModel.registrationData.country == "KWT"
     }
     
     var body: some View {
@@ -74,6 +82,219 @@ struct Step4_AddressView: View {
     
     private var addressForm: some View {
         VStack(spacing: 16) {
+            if isKuwait {
+                // Kuwait-specific address format
+                kuwaitAddressForm
+            } else {
+                // Standard international address format
+                internationalAddressForm
+            }
+        }
+        .sheet(isPresented: $showGovernoratePicker) {
+            if isKuwait {
+                GovernoratePickerSheet(selectedGovernorate: $viewModel.registrationData.governorate)
+            } else {
+                StatePickerSheet(selectedState: $viewModel.registrationData.state)
+            }
+        }
+    }
+    
+    // MARK: - Kuwait Address Form
+    
+    private var kuwaitAddressForm: some View {
+        VStack(spacing: 16) {
+            // Area and Governorate Row
+            HStack(spacing: 12) {
+                // Area (المنطقة)
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 4) {
+                        Text("Area")
+                            .font(.inputLabel)
+                            .foregroundColor(.textPrimary)
+                        Text("المنطقة")
+                            .font(.caption)
+                            .foregroundColor(.textTertiary)
+                    }
+                    
+                    TextField("e.g., Salmiya", text: $viewModel.registrationData.area)
+                        .textFieldStyle(ForsaTextFieldStyle(isFocused: focusedField == .area))
+                        .focused($focusedField, equals: .area)
+                        .submitLabel(.next)
+                        .onSubmit { showGovernoratePicker = true }
+                }
+                
+                // Governorate (المحافظة)
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 4) {
+                        Text("Governorate")
+                            .font(.inputLabel)
+                            .foregroundColor(.textPrimary)
+                        Text("المحافظة")
+                            .font(.caption)
+                            .foregroundColor(.textTertiary)
+                    }
+                    
+                    Button(action: { showGovernoratePicker = true }) {
+                        HStack {
+                            Text(viewModel.registrationData.governorate.isEmpty ? "Select" : viewModel.registrationData.governorate)
+                                .font(.inputText)
+                                .foregroundColor(viewModel.registrationData.governorate.isEmpty ? .textTertiary : .textPrimary)
+                            
+                            Spacer()
+                            
+                            Image(systemName: "chevron.down")
+                                .font(.caption)
+                                .foregroundColor(.textTertiary)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 14)
+                        .background(Color.backgroundCard)
+                        .cornerRadius(12)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color.borderPrimary, lineWidth: 1)
+                        )
+                    }
+                }
+            }
+            
+            // Block and Street Row
+            HStack(spacing: 12) {
+                // Block (القطعة)
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 4) {
+                        Text("Block")
+                            .font(.inputLabel)
+                            .foregroundColor(.textPrimary)
+                        Text("القطعة")
+                            .font(.caption)
+                            .foregroundColor(.textTertiary)
+                    }
+                    
+                    TextField("e.g., 5", text: $viewModel.registrationData.block)
+                        .textFieldStyle(ForsaTextFieldStyle(isFocused: focusedField == .block))
+                        .keyboardType(.numberPad)
+                        .focused($focusedField, equals: .block)
+                }
+                .frame(width: 100)
+                
+                // Street (الشارع)
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 4) {
+                        Text("Street")
+                            .font(.inputLabel)
+                            .foregroundColor(.textPrimary)
+                        Text("الشارع")
+                            .font(.caption)
+                            .foregroundColor(.textTertiary)
+                    }
+                    
+                    TextField("Street name or number", text: $viewModel.registrationData.streetAddress)
+                        .textFieldStyle(ForsaTextFieldStyle(isFocused: focusedField == .street))
+                        .focused($focusedField, equals: .street)
+                        .submitLabel(.next)
+                        .onSubmit { focusedField = .building }
+                }
+            }
+            
+            // Building and Floor/Apt Row
+            HStack(spacing: 12) {
+                // Building (المبنى)
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 4) {
+                        Text("Building")
+                            .font(.inputLabel)
+                            .foregroundColor(.textPrimary)
+                        Text("المبنى")
+                            .font(.caption)
+                            .foregroundColor(.textTertiary)
+                    }
+                    
+                    TextField("e.g., 12", text: $viewModel.registrationData.building)
+                        .textFieldStyle(ForsaTextFieldStyle(isFocused: focusedField == .building))
+                        .focused($focusedField, equals: .building)
+                        .submitLabel(.next)
+                        .onSubmit { focusedField = .floor }
+                }
+                
+                // Floor (الطابق) - Optional
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 4) {
+                        Text("Floor")
+                            .font(.inputLabel)
+                            .foregroundColor(.textPrimary)
+                        Text("(Optional)")
+                            .font(.caption1)
+                            .foregroundColor(.textTertiary)
+                    }
+                    
+                    TextField("e.g., 3", text: Binding(
+                        get: { viewModel.registrationData.floor ?? "" },
+                        set: { viewModel.registrationData.floor = $0.isEmpty ? nil : $0 }
+                    ))
+                    .textFieldStyle(ForsaTextFieldStyle(isFocused: focusedField == .floor))
+                    .keyboardType(.numberPad)
+                    .focused($focusedField, equals: .floor)
+                }
+                .frame(width: 100)
+                
+                // Apartment (الشقة) - Optional
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 4) {
+                        Text("Apt")
+                            .font(.inputLabel)
+                            .foregroundColor(.textPrimary)
+                        Text("(Opt)")
+                            .font(.caption1)
+                            .foregroundColor(.textTertiary)
+                    }
+                    
+                    TextField("e.g., 5A", text: Binding(
+                        get: { viewModel.registrationData.apartmentUnit ?? "" },
+                        set: { viewModel.registrationData.apartmentUnit = $0.isEmpty ? nil : $0 }
+                    ))
+                    .textFieldStyle(ForsaTextFieldStyle(isFocused: focusedField == .unit))
+                    .focused($focusedField, equals: .unit)
+                }
+                .frame(width: 80)
+            }
+            
+            // Country (fixed to Kuwait)
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Country")
+                    .font(.inputLabel)
+                    .foregroundColor(.textPrimary)
+                
+                HStack {
+                    Text("🇰🇼")
+                        .font(.title3)
+                    
+                    Text("Kuwait")
+                        .font(.inputText)
+                        .foregroundColor(.textPrimary)
+                    
+                    Spacer()
+                    
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.body)
+                        .foregroundColor(.successGreen)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
+                .background(Color.successGreen.opacity(0.08))
+                .cornerRadius(12)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.successGreen.opacity(0.3), lineWidth: 1)
+                )
+            }
+        }
+    }
+    
+    // MARK: - International Address Form
+    
+    private var internationalAddressForm: some View {
+        VStack(spacing: 16) {
             // Street Address
             VStack(alignment: .leading, spacing: 8) {
                 Text("Street Address")
@@ -124,7 +345,7 @@ struct Step4_AddressView: View {
                         .textContentType(.addressCity)
                         .focused($focusedField, equals: .city)
                         .submitLabel(.next)
-                        .onSubmit { showStatePicker = true }
+                        .onSubmit { showGovernoratePicker = true }
                 }
                 
                 // State
@@ -133,9 +354,9 @@ struct Step4_AddressView: View {
                         .font(.inputLabel)
                         .foregroundColor(.textPrimary)
                     
-                    Button(action: { showStatePicker = true }) {
+                    Button(action: { showGovernoratePicker = true }) {
                         HStack {
-                            Text(stateDisplayText)
+                            Text(viewModel.registrationData.state.isEmpty ? "Select" : viewModel.registrationData.state)
                                 .font(.inputText)
                                 .foregroundColor(viewModel.registrationData.state.isEmpty ? .textTertiary : .textPrimary)
                             
@@ -155,12 +376,12 @@ struct Step4_AddressView: View {
                         )
                     }
                 }
-                .frame(width: 100)
+                .frame(width: 120)
             }
             
-            // ZIP and Country
+            // Postal Code and Country
             HStack(spacing: 12) {
-                // ZIP Code
+                // Postal Code
                 VStack(alignment: .leading, spacing: 8) {
                     Text("ZIP Code")
                         .font(.inputLabel)
@@ -172,7 +393,6 @@ struct Step4_AddressView: View {
                         .textContentType(.postalCode)
                         .focused($focusedField, equals: .zip)
                         .onChange(of: viewModel.registrationData.postalCode) { _, newValue in
-                            // Limit to 10 characters (ZIP+4)
                             if newValue.count > 10 {
                                 viewModel.registrationData.postalCode = String(newValue.prefix(10))
                             }
@@ -186,42 +406,27 @@ struct Step4_AddressView: View {
                         .font(.inputLabel)
                         .foregroundColor(.textPrimary)
                     
-                    Button(action: { showCountryPicker = true }) {
-                        HStack {
-                            Text(countryFlag)
-                                .font(.title3)
-                            
-                            Text(countryName)
-                                .font(.inputText)
-                                .foregroundColor(.textPrimary)
-                                .lineLimit(1)
-                            
-                            Spacer()
-                            
-                            Image(systemName: "chevron.down")
-                                .font(.caption)
-                                .foregroundColor(.textTertiary)
-                        }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 14)
-                        .background(Color.backgroundCard)
-                        .cornerRadius(12)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(Color.borderPrimary, lineWidth: 1)
-                        )
+                    HStack {
+                        Text(countryFlag)
+                            .font(.title3)
+                        
+                        Text(countryName)
+                            .font(.inputText)
+                            .foregroundColor(.textPrimary)
+                            .lineLimit(1)
+                        
+                        Spacer()
                     }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 14)
+                    .background(Color.backgroundCard.opacity(0.6))
+                    .cornerRadius(12)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.borderPrimary.opacity(0.5), lineWidth: 1)
+                    )
                 }
             }
-        }
-        .sheet(isPresented: $showStatePicker) {
-            StatePickerSheet(selectedState: $viewModel.registrationData.state)
-        }
-        .sheet(isPresented: $showCountryPicker) {
-            CountrySelectionSheet(
-                selectedCountryCode: $viewModel.registrationData.country,
-                title: "Country"
-            )
         }
     }
     
@@ -257,34 +462,93 @@ struct Step4_AddressView: View {
     
     // MARK: - Computed Properties
     
-    private var stateDisplayText: String {
-        if viewModel.registrationData.state.isEmpty {
-            return "Select"
-        }
-        return viewModel.registrationData.state
-    }
-    
     private var countryFlag: String {
-        Country.common.first { $0.code == viewModel.registrationData.country }?.flag ?? "🇺🇸"
+        Country.common.first { $0.code == viewModel.registrationData.country }?.flag ?? "🇰🇼"
     }
     
     private var countryName: String {
-        Country.common.first { $0.code == viewModel.registrationData.country }?.name ?? "USA"
+        Country.common.first { $0.code == viewModel.registrationData.country }?.name ?? "Kuwait"
     }
     
     private var isFormValid: Bool {
-        !viewModel.registrationData.streetAddress.isEmpty &&
-        !viewModel.registrationData.city.isEmpty &&
-        !viewModel.registrationData.state.isEmpty &&
-        !viewModel.registrationData.postalCode.isEmpty &&
-        isValidZip
+        if isKuwait {
+            // Kuwait address validation
+            return !viewModel.registrationData.block.isEmpty &&
+                   !viewModel.registrationData.streetAddress.isEmpty &&
+                   !viewModel.registrationData.building.isEmpty &&
+                   !viewModel.registrationData.area.isEmpty &&
+                   !viewModel.registrationData.governorate.isEmpty
+        } else {
+            // International address validation
+            return !viewModel.registrationData.streetAddress.isEmpty &&
+                   !viewModel.registrationData.city.isEmpty &&
+                   !viewModel.registrationData.state.isEmpty &&
+                   !viewModel.registrationData.postalCode.isEmpty &&
+                   isValidPostalCode
+        }
     }
     
-    private var isValidZip: Bool {
-        let zip = viewModel.registrationData.postalCode
-        let zipRegex = "^[0-9]{5}(-[0-9]{4})?$"
-        let zipPredicate = NSPredicate(format: "SELF MATCHES %@", zipRegex)
-        return zipPredicate.evaluate(with: zip)
+    private var isValidPostalCode: Bool {
+        let postalCode = viewModel.registrationData.postalCode
+        
+        if isKuwait {
+            // Kuwait doesn't typically use postal codes, but validate if provided
+            return postalCode.isEmpty || postalCode.count == 5
+        } else {
+            // US ZIP codes: 5 digits or 5+4
+            let usRegex = "^[0-9]{5}(-[0-9]{4})?$"
+            let usPredicate = NSPredicate(format: "SELF MATCHES %@", usRegex)
+            return usPredicate.evaluate(with: postalCode)
+        }
+    }
+}
+
+// MARK: - Governorate Picker Sheet (Kuwait)
+
+struct GovernoratePickerSheet: View {
+    @Binding var selectedGovernorate: String
+    @Environment(\.dismiss) private var dismiss
+    
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(KuwaitGovernorate.allCases) { governorate in
+                    Button(action: {
+                        selectedGovernorate = governorate.displayName
+                        dismiss()
+                    }) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(governorate.displayName)
+                                    .font(.body)
+                                    .foregroundColor(.textPrimary)
+                                
+                                Text(governorate.displayNameArabic)
+                                    .font(.caption)
+                                    .foregroundColor(.textSecondary)
+                            }
+                            
+                            Spacer()
+                            
+                            if governorate.displayName == selectedGovernorate {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.body)
+                                    .foregroundColor(.primaryPurple)
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+            }
+            .navigationTitle("Select Governorate")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }
+                        .foregroundColor(.primaryPurple)
+                }
+            }
+        }
     }
 }
 

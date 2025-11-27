@@ -167,20 +167,20 @@ class AlpacaTradingService: ObservableObject {
         encoder.outputFormatting = .prettyPrinted
         request.httpBody = try encoder.encode(body)
         
-        // Log the request body
+        // Log the request body (REDACTED for security)
         if let bodyData = request.httpBody, let bodyString = String(data: bodyData, encoding: .utf8) {
-            print("📤 Request Body:")
-            print(bodyString)
+            print("📤 Request Body (redacted):")
+            print(redactSensitiveInfo(bodyString))
         }
         
         print("📤 Sending POST to: \(url.absoluteString)")
         
         let (data, response) = try await URLSession.shared.data(for: request)
         
-        // Log raw response
+        // Log raw response (REDACTED for security)
         if let responseString = String(data: data, encoding: .utf8) {
-            print("📥 Raw Response:")
-            print(responseString)
+            print("📥 Raw Response (redacted):")
+            print(redactSensitiveInfo(responseString))
         }
         
         try validateResponse(response, data: data)
@@ -220,20 +220,20 @@ class AlpacaTradingService: ObservableObject {
         encoder.outputFormatting = .prettyPrinted
         request.httpBody = try encoder.encode(body)
         
-        // Log the request body
+        // Log the request body (REDACTED for security)
         if let bodyData = request.httpBody, let bodyString = String(data: bodyData, encoding: .utf8) {
-            print("📤 Request Body:")
-            print(bodyString)
+            print("📤 Request Body (redacted):")
+            print(redactSensitiveInfo(bodyString))
         }
         
         print("📤 Sending POST to: \(url.absoluteString)")
         
         let (data, response) = try await URLSession.shared.data(for: request)
         
-        // Log raw response
+        // Log raw response (REDACTED for security)
         if let responseString = String(data: data, encoding: .utf8) {
-            print("📥 Raw Response:")
-            print(responseString)
+            print("📥 Raw Response (redacted):")
+            print(redactSensitiveInfo(responseString))
         }
         
         try validateResponse(response, data: data)
@@ -250,24 +250,48 @@ class AlpacaTradingService: ObservableObject {
     
     /// Creates a new account using comprehensive KYC registration data
     /// Returns a detailed result including status and any required actions
+    /// Supports international users (Kuwait, GCC) with appropriate tax forms
     func createAccount(registrationData: KYCRegistrationData) async throws -> AlpacaAccountCreationResult {
         await MainActor.run { isCreatingAccount = true }
         defer { Task { await MainActor.run { isCreatingAccount = false } } }
         
+        // Determine if user is a US person or international
+        let isUSPerson = registrationData.citizenship == "USA" || 
+                         registrationData.countryOfTaxResidence == "USA"
+        let userCountry = registrationData.country.isEmpty ? "KWT" : registrationData.country
+        
         print("📝 Starting Enhanced Alpaca Account Creation...")
         print("   Email: \(registrationData.email)")
         print("   Name: \(registrationData.firstName) \(registrationData.lastName)")
+        print("   International User: \(!isUSPerson)")
+        print("   Country: \(userCountry)")
         
-        // Build contact information
+        // Build contact information with proper phone formatting for user's country
         let contact = AlpacaContact(
             email_address: registrationData.email,
-            phone_number: formatPhoneNumber(registrationData.phoneNumber),
+            phone_number: formatPhoneNumber(registrationData.phoneNumber, country: userCountry),
             street_address: [registrationData.streetAddress, registrationData.apartmentUnit].compactMap { $0?.isEmpty == false ? $0 : nil },
             city: registrationData.city,
-            state: registrationData.state,
+            state: registrationData.state.isEmpty ? nil : registrationData.state,
             postal_code: registrationData.postalCode,
-            country: registrationData.country
+            country: userCountry
         )
+        
+        // Determine tax ID type based on citizenship
+        // For international users (Kuwait, GCC, etc.), use FOREIGN_ID or FOREIGN_PASSPORT
+        let taxIdType: String
+        if isUSPerson {
+            taxIdType = registrationData.taxIdType.rawValue
+        } else {
+            // International users must use foreign ID types
+            switch registrationData.taxIdType {
+            case .ssn, .itin:
+                // Force to FOREIGN_ID for non-US persons
+                taxIdType = TaxIdType.foreignId.rawValue
+            case .foreignPassport, .foreignId, .kuwaitCivilId:
+                taxIdType = registrationData.taxIdType.rawValue
+            }
+        }
         
         // Build identity with all financial information
         let identity = AlpacaIdentity(
@@ -275,10 +299,10 @@ class AlpacaTradingService: ObservableObject {
             family_name: registrationData.lastName,
             date_of_birth: formatDate(registrationData.dateOfBirth),
             tax_id: cleanTaxId(registrationData.taxId),
-            tax_id_type: registrationData.taxIdType.rawValue,
-            country_of_citizenship: registrationData.citizenship,
-            country_of_birth: registrationData.countryOfBirth,
-            country_of_tax_residence: registrationData.countryOfTaxResidence,
+            tax_id_type: taxIdType,
+            country_of_citizenship: registrationData.citizenship.isEmpty ? userCountry : registrationData.citizenship,
+            country_of_birth: registrationData.countryOfBirth.isEmpty ? userCountry : registrationData.countryOfBirth,
+            country_of_tax_residence: registrationData.countryOfTaxResidence.isEmpty ? userCountry : registrationData.countryOfTaxResidence,
             funding_source: registrationData.fundingSources.map { $0.rawValue },
             annual_income_min: registrationData.annualIncome?.minValue,
             annual_income_max: registrationData.annualIncome?.maxValue,
@@ -315,6 +339,17 @@ class AlpacaTradingService: ObservableObject {
         // Add margin agreement if accepted
         if registrationData.agreedToMarginAgreement {
             agreements.append(AlpacaAgreement(agreement: "margin_agreement", signed_at: signedAt, ip_address: ipAddress))
+        }
+        
+        // For international users (non-US), add W-8BEN agreement instead of W-9
+        // W-8BEN is required for foreign persons to certify foreign status for tax withholding
+        if !isUSPerson {
+            agreements.append(AlpacaAgreement(
+                agreement: "w8ben_agreement",
+                signed_at: signedAt,
+                ip_address: ipAddress
+            ))
+            print("   📋 Added W-8BEN agreement for international user")
         }
         
         // Build trusted contact if provided
@@ -1601,7 +1636,7 @@ class AlpacaTradingService: ObservableObject {
     
     private func validateResponse(_ response: URLResponse, data: Data) throws {
         guard let httpResponse = response as? HTTPURLResponse else {
-            throw URLError(.badServerResponse)
+            throw AlpacaAPIError.networkError("Invalid response from server")
         }
         
         guard (200...299).contains(httpResponse.statusCode) else {
@@ -1612,11 +1647,133 @@ class AlpacaTradingService: ObservableObject {
             print("Request URL: \(response.url?.absoluteString ?? "Unknown")")
             print("--------------------------------------------------")
             
+            // Parse Alpaca error response for specific error handling
             if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
                 print("Decoded Error: \(errorJson)")
+                
+                // Check for Alpaca-specific error codes
+                if let code = errorJson["code"] as? Int {
+                    throw parseAlpacaErrorCode(code, message: errorJson["message"] as? String, statusCode: httpResponse.statusCode)
+                }
+                
+                // Check for error message patterns
+                if let message = errorJson["message"] as? String {
+                    throw parseAlpacaErrorMessage(message, statusCode: httpResponse.statusCode)
+                }
             }
             
-            throw URLError(.badServerResponse)
+            // Fallback to HTTP status code based errors
+            throw mapHTTPStatusToError(httpResponse.statusCode)
+        }
+    }
+    
+    /// Parse Alpaca-specific error codes into typed errors
+    private func parseAlpacaErrorCode(_ code: Int, message: String?, statusCode: Int) -> AlpacaAPIError {
+        switch code {
+        // Account creation errors (400xx codes)
+        case 40010001:
+            return .duplicateEmail
+        case 40010002:
+            return .invalidSSN
+        case 40010003:
+            return .invalidTaxId(message ?? "Tax ID is invalid")
+        case 40010004:
+            return .invalidDateOfBirth
+        case 40010005:
+            return .underageUser
+        case 40010010:
+            return .accountAlreadyExists
+        case 40010011:
+            return .invalidAddress(message ?? "Address validation failed")
+            
+        // Document errors
+        case 40020001:
+            return .documentRequired(message ?? "Document is required")
+        case 40020002:
+            return .invalidDocumentFormat
+        case 40020003:
+            return .documentTooLarge
+            
+        // Trading errors
+        case 40030001:
+            return .insufficientFunds
+        case 40030002:
+            return .tradingNotAllowed(message ?? "Trading is not allowed")
+        case 40030003:
+            return .marketClosed
+            
+        // Rate limiting
+        case 42900001:
+            return .rateLimited
+            
+        // Server errors
+        case 50000001...50099999:
+            return .serverError(message ?? "Internal server error")
+            
+        default:
+            return .unknownError(code: code, message: message ?? "Unknown error")
+        }
+    }
+    
+    /// Parse error message patterns for common Alpaca errors
+    private func parseAlpacaErrorMessage(_ message: String, statusCode: Int) -> AlpacaAPIError {
+        let lowercased = message.lowercased()
+        
+        // Duplicate email detection
+        if lowercased.contains("email") && (lowercased.contains("duplicate") || lowercased.contains("already exists") || lowercased.contains("already registered")) {
+            return .duplicateEmail
+        }
+        
+        // SSN errors
+        if lowercased.contains("ssn") || lowercased.contains("tax_id") {
+            if lowercased.contains("invalid") || lowercased.contains("incorrect") {
+                return .invalidSSN
+            }
+            if lowercased.contains("duplicate") || lowercased.contains("already") {
+                return .duplicateSSN
+            }
+        }
+        
+        // Account rejection
+        if lowercased.contains("reject") || lowercased.contains("denied") {
+            return .accountRejected(reason: message)
+        }
+        
+        // Rate limiting
+        if lowercased.contains("rate limit") || lowercased.contains("too many") {
+            return .rateLimited
+        }
+        
+        // Insufficient funds
+        if lowercased.contains("insufficient") && lowercased.contains("fund") {
+            return .insufficientFunds
+        }
+        
+        // Default based on status code
+        return mapHTTPStatusToError(statusCode, message: message)
+    }
+    
+    /// Map HTTP status codes to appropriate errors
+    private func mapHTTPStatusToError(_ statusCode: Int, message: String? = nil) -> AlpacaAPIError {
+        switch statusCode {
+        case 400:
+            return .badRequest(message ?? "Invalid request")
+        case 401:
+            return .unauthorized
+        case 403:
+            return .forbidden(message ?? "Access denied")
+        case 404:
+            return .notFound(message ?? "Resource not found")
+        case 409:
+            return .conflict(message ?? "Conflict with existing data")
+        case 422:
+            return .validationFailed(message ?? "Validation failed")
+        case 429:
+            return .rateLimited
+        case 500...599:
+            return .serverError(message ?? "Server error. Please try again later.")
+        default:
+            return .networkError(message ?? "Request failed with status \(statusCode)")
         }
     }
     
@@ -1630,22 +1787,93 @@ class AlpacaTradingService: ObservableObject {
         return formatter.string(from: date)
     }
     
-    /// Formats phone number to E.164 format
-    private func formatPhoneNumber(_ phone: String) -> String {
-        let digits = phone.filter { $0.isNumber }
+    /// Formats phone number to E.164 format based on country
+    /// Default country is Kuwait (KWT) for this app's target users
+    private func formatPhoneNumber(_ phone: String, country: String = "KWT") -> String {
+        let cleaned = phone.trimmingCharacters(in: .whitespaces)
         
-        // If already starts with +, use as-is
-        if phone.hasPrefix("+") && digits.count >= 10 {
+        // If already has + prefix, validate and return
+        if cleaned.hasPrefix("+") {
+            let digits = String(cleaned.dropFirst().filter { $0.isNumber })
             return "+\(digits)"
         }
         
-        // Assume US number if 10 digits
-        if digits.count == 10 {
-            return "+1\(digits)"
+        // Remove all non-digits
+        let digits = String(cleaned.filter { $0.isNumber })
+        
+        // Handle based on country
+        switch country.uppercased() {
+        case "KWT":
+            // Kuwait: 8 digits, country code +965
+            if digits.count == 8 {
+                return "+965\(digits)"
+            }
+            if digits.count == 11 && digits.hasPrefix("965") {
+                return "+\(digits)"
+            }
+            
+        case "USA":
+            // US: 10 digits, country code +1
+            if digits.count == 10 {
+                return "+1\(digits)"
+            }
+            if digits.count == 11 && digits.hasPrefix("1") {
+                return "+\(digits)"
+            }
+            
+        case "SAU":
+            // Saudi Arabia: 9 digits (without leading 0), country code +966
+            if digits.count == 9 && digits.hasPrefix("5") {
+                return "+966\(digits)"
+            }
+            if digits.count == 10 && digits.hasPrefix("05") {
+                let withoutLeadingZero = String(digits.dropFirst())
+                return "+966\(withoutLeadingZero)"
+            }
+            
+        case "ARE":
+            // UAE: 9 digits, country code +971
+            if digits.count == 9 && digits.hasPrefix("5") {
+                return "+971\(digits)"
+            }
+            
+        case "QAT":
+            // Qatar: 8 digits, country code +974
+            if digits.count == 8 {
+                return "+974\(digits)"
+            }
+            
+        case "BHR":
+            // Bahrain: 8 digits, country code +973
+            if digits.count == 8 {
+                return "+973\(digits)"
+            }
+            
+        case "OMN":
+            // Oman: 8 digits, country code +968
+            if digits.count == 8 {
+                return "+968\(digits)"
+            }
+            
+        default:
+            break
         }
         
-        // Otherwise prepend + if not present
-        return digits.hasPrefix("1") ? "+\(digits)" : "+1\(digits)"
+        // Fallback: detect known country codes
+        if digits.hasPrefix("965") && digits.count == 11 {
+            return "+\(digits)" // Kuwait with country code
+        }
+        if digits.hasPrefix("1") && digits.count == 11 {
+            return "+\(digits)" // US with country code
+        }
+        
+        // Default: assume Kuwait for 8 digits
+        if digits.count == 8 {
+            return "+965\(digits)"
+        }
+        
+        // Otherwise just add + prefix
+        return "+\(digits)"
     }
     
     /// Cleans tax ID by removing formatting
@@ -1700,6 +1928,156 @@ class AlpacaTradingService: ObservableObject {
 }
 
 // MARK: - Supporting Types
+
+// MARK: - Alpaca API Error
+
+/// Comprehensive error types for Alpaca API responses
+/// Provides user-friendly error messages for common failure scenarios
+enum AlpacaAPIError: Error, LocalizedError {
+    // Account creation errors
+    case duplicateEmail
+    case duplicateSSN
+    case invalidSSN
+    case invalidTaxId(String)
+    case invalidDateOfBirth
+    case underageUser
+    case accountAlreadyExists
+    case invalidAddress(String)
+    case accountRejected(reason: String)
+    
+    // Document errors
+    case documentRequired(String)
+    case invalidDocumentFormat
+    case documentTooLarge
+    
+    // Trading errors
+    case insufficientFunds
+    case tradingNotAllowed(String)
+    case marketClosed
+    
+    // HTTP/Network errors
+    case badRequest(String)
+    case unauthorized
+    case forbidden(String)
+    case notFound(String)
+    case conflict(String)
+    case validationFailed(String)
+    case rateLimited
+    case serverError(String)
+    case networkError(String)
+    
+    // Generic errors
+    case unknownError(code: Int, message: String)
+    
+    var errorDescription: String? {
+        switch self {
+        // Account creation errors
+        case .duplicateEmail:
+            return "An account with this email already exists. Please sign in or use a different email."
+        case .duplicateSSN:
+            return "An account with this SSN/Tax ID already exists."
+        case .invalidSSN:
+            return "The SSN provided is invalid. Please check and try again."
+        case .invalidTaxId(let detail):
+            return "Tax ID validation failed: \(detail)"
+        case .invalidDateOfBirth:
+            return "The date of birth provided is invalid."
+        case .underageUser:
+            return "You must be at least 18 years old to open an account."
+        case .accountAlreadyExists:
+            return "An account already exists with this information."
+        case .invalidAddress(let detail):
+            return "Address validation failed: \(detail)"
+        case .accountRejected(let reason):
+            return "Account application was rejected: \(reason)"
+            
+        // Document errors
+        case .documentRequired(let type):
+            return "Required document missing: \(type)"
+        case .invalidDocumentFormat:
+            return "Document format is not supported. Please use JPEG, PNG, or PDF."
+        case .documentTooLarge:
+            return "Document file is too large. Maximum size is 5MB."
+            
+        // Trading errors
+        case .insufficientFunds:
+            return "Insufficient funds to complete this transaction."
+        case .tradingNotAllowed(let reason):
+            return "Trading is not allowed: \(reason)"
+        case .marketClosed:
+            return "The market is currently closed. Please try again during market hours."
+            
+        // HTTP/Network errors
+        case .badRequest(let detail):
+            return "Invalid request: \(detail)"
+        case .unauthorized:
+            return "Authentication failed. Please sign in again."
+        case .forbidden(let detail):
+            return "Access denied: \(detail)"
+        case .notFound(let detail):
+            return "Not found: \(detail)"
+        case .conflict(let detail):
+            return "Conflict: \(detail)"
+        case .validationFailed(let detail):
+            return "Validation failed: \(detail)"
+        case .rateLimited:
+            return "Too many requests. Please wait a moment and try again."
+        case .serverError(let detail):
+            return "Server error: \(detail)"
+        case .networkError(let detail):
+            return "Network error: \(detail)"
+            
+        // Generic errors
+        case .unknownError(let code, let message):
+            return "Error (\(code)): \(message)"
+        }
+    }
+    
+    /// Whether this error is recoverable by retrying
+    var isRetryable: Bool {
+        switch self {
+        case .rateLimited, .serverError, .networkError, .marketClosed:
+            return true
+        default:
+            return false
+        }
+    }
+    
+    /// Whether this error should prompt the user to check their input
+    var requiresUserAction: Bool {
+        switch self {
+        case .duplicateEmail, .duplicateSSN, .invalidSSN, .invalidTaxId,
+             .invalidDateOfBirth, .underageUser, .invalidAddress,
+             .documentRequired, .invalidDocumentFormat, .documentTooLarge,
+             .insufficientFunds:
+            return true
+        default:
+            return false
+        }
+    }
+    
+    /// Suggested action for the user
+    var suggestedAction: String {
+        switch self {
+        case .duplicateEmail:
+            return "Try signing in instead, or use a different email address."
+        case .duplicateSSN, .invalidSSN:
+            return "Double-check your SSN/Tax ID and try again."
+        case .invalidAddress:
+            return "Verify your address information is correct."
+        case .insufficientFunds:
+            return "Add funds to your account and try again."
+        case .rateLimited:
+            return "Please wait a few minutes before trying again."
+        case .serverError, .networkError:
+            return "Check your internet connection and try again."
+        case .documentRequired, .invalidDocumentFormat, .documentTooLarge:
+            return "Please upload a valid document."
+        default:
+            return "Please try again or contact support if the issue persists."
+        }
+    }
+}
 
 /// Document side for multi-page documents
 enum DocumentSide: String {

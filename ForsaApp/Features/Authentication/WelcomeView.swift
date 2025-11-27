@@ -55,7 +55,7 @@ struct WelcomeView: View {
 
                 // Action Buttons
                 VStack(spacing: 12) {
-                    NavigationLink(destination: SignUpView()) {
+                    NavigationLink(destination: RegistrationFlowView()) {
                         Text("Get Started")
                             .font(.buttonLarge)
                             .fontWeight(.semibold)

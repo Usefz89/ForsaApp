@@ -275,49 +275,6 @@ struct Step6_FinancialProfileView: View {
     }
 }
 
-// MARK: - Funding Source Card
-
-struct FundingSourceCard: View {
-    let source: FundingSource
-    let isSelected: Bool
-    let action: () -> Void
-    
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: 8) {
-                Image(systemName: source.icon)
-                    .font(.system(size: 20))
-                    .foregroundColor(isSelected ? .white : .primaryPurple)
-                
-                Text(source.displayName)
-                    .font(.caption1Medium)
-                    .foregroundColor(isSelected ? .white : .textPrimary)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.8)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
-            .padding(.horizontal, 8)
-            .background(isSelected ? Color.primaryPurple : Color.backgroundCard)
-            .cornerRadius(12)
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(isSelected ? Color.primaryPurple : Color.borderPrimary, lineWidth: isSelected ? 2 : 1)
-            )
-        }
-        .buttonStyle(ScaleButtonStyle())
-    }
-}
-
-struct ScaleButtonStyle: SwiftUI.ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.96 : 1)
-            .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
-    }
-}
-
 // MARK: - Employment Picker Sheet
 
 struct EmploymentPickerSheet: View {

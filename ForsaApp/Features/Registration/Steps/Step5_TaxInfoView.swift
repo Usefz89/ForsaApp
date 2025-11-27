@@ -7,14 +7,62 @@
 
 import SwiftUI
 
-/// Step 5: Tax Information - SSN (masked), country of tax residence
+/// Step 5: Tax Information - Civil ID (Kuwait) or SSN (US), country of tax residence
+/// Optimized for Kuwait customers
+/// Security: Auto-masks ID after 2 seconds of inactivity, stores to Keychain immediately
 struct Step5_TaxInfoView: View {
     @ObservedObject var viewModel: RegistrationViewModel
     
-    @State private var showSSN = false
-    @State private var showTaxIdTypePicker = false
+    @State private var showId = false
+    @State private var showIdTypePicker = false
     @State private var showCountryPicker = false
-    @FocusState private var ssnFocused: Bool
+    @FocusState private var idFocused: Bool
+    
+    /// Timer for auto-masking after inactivity
+    @State private var autoMaskTimer: Timer?
+    
+    /// Auto-mask delay in seconds (for security)
+    private let autoMaskDelay: TimeInterval = 2.0
+    
+    /// Whether the user is from Kuwait
+    private var isKuwait: Bool {
+        viewModel.registrationData.country == "KWT"
+    }
+    
+    /// The appropriate ID type options based on country
+    private var availableIdTypes: [TaxIdType] {
+        isKuwait ? TaxIdType.kuwaitOptions : TaxIdType.usOptions
+    }
+    
+    /// Expected digit count for current ID type
+    private var expectedDigitCount: Int {
+        switch viewModel.registrationData.taxIdType {
+        case .kuwaitCivilId: return 12
+        case .ssn, .itin: return 9
+        case .foreignPassport, .foreignId: return 5  // minimum
+        }
+    }
+    
+    // MARK: - Security: Auto-mask Timer
+    
+    /// Reset the auto-mask timer when user types
+    private func resetAutoMaskTimer() {
+        autoMaskTimer?.invalidate()
+        autoMaskTimer = Timer.scheduledTimer(withTimeInterval: autoMaskDelay, repeats: false) { _ in
+            // Auto-hide after inactivity
+            withAnimation(.easeOut(duration: 0.2)) {
+                showId = false
+            }
+        }
+    }
+    
+    /// Store ID securely and reset timer
+    private func onIdChanged(_ newValue: String) {
+        // Store to Keychain immediately for security
+        viewModel.storeSSNSecurely(newValue)
+        // Reset auto-mask timer
+        resetAutoMaskTimer()
+    }
     
     var body: some View {
         RegistrationStepContainer(
@@ -54,18 +102,20 @@ struct Step5_TaxInfoView: View {
                     .fill(Color.primaryPurple.opacity(0.1))
                     .frame(width: 80, height: 80)
                 
-                Image(systemName: "doc.text.fill")
+                Image(systemName: "person.text.rectangle.fill")
                     .font(.system(size: 32, weight: .medium))
                     .foregroundColor(.primaryPurple)
             }
             
             VStack(spacing: 8) {
-                Text("Tax Information")
+                Text(isKuwait ? "Identity Verification" : "Tax Information")
                     .font(.title2)
                     .fontWeight(.bold)
                     .foregroundColor(.textPrimary)
                 
-                Text("Required by law for tax reporting.\nYour information is encrypted and secure.")
+                Text(isKuwait 
+                    ? "Your Civil ID is required for account verification.\nYour information is encrypted and secure."
+                    : "Required by law for tax reporting.\nYour information is encrypted and secure.")
                     .font(.body)
                     .foregroundColor(.textSecondary)
                     .multilineTextAlignment(.center)
@@ -73,15 +123,15 @@ struct Step5_TaxInfoView: View {
         }
     }
     
-    // MARK: - Tax ID Type Section
+    // MARK: - ID Type Section
     
     private var taxIdTypeSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Tax ID Type")
+            Text(isKuwait ? "ID Type" : "Tax ID Type")
                 .font(.inputLabel)
                 .foregroundColor(.textPrimary)
             
-            Button(action: { showTaxIdTypePicker = true }) {
+            Button(action: { showIdTypePicker = true }) {
                 HStack {
                     Text(viewModel.registrationData.taxIdType.displayName)
                         .font(.inputText)
@@ -103,12 +153,15 @@ struct Step5_TaxInfoView: View {
                 )
             }
         }
-        .sheet(isPresented: $showTaxIdTypePicker) {
-            TaxIdTypePickerSheet(selectedType: $viewModel.registrationData.taxIdType)
+        .sheet(isPresented: $showIdTypePicker) {
+            TaxIdTypePickerSheet(
+                selectedType: $viewModel.registrationData.taxIdType,
+                availableTypes: availableIdTypes
+            )
         }
     }
     
-    // MARK: - SSN Input Section
+    // MARK: - ID Input Section
     
     private var ssnInputSection: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -119,11 +172,11 @@ struct Step5_TaxInfoView: View {
                 
                 Spacer()
                 
-                Button(action: { showSSN.toggle() }) {
+                Button(action: { showId.toggle() }) {
                     HStack(spacing: 4) {
-                        Image(systemName: showSSN ? "eye.slash.fill" : "eye.fill")
+                        Image(systemName: showId ? "eye.slash.fill" : "eye.fill")
                             .font(.caption)
-                        Text(showSSN ? "Hide" : "Show")
+                        Text(showId ? "Hide" : "Show")
                             .font(.caption1)
                     }
                     .foregroundColor(.primaryPurple)
@@ -135,25 +188,34 @@ struct Step5_TaxInfoView: View {
                     .font(.system(size: 18))
                     .foregroundColor(.primaryPurple)
                 
-                if showSSN {
+                if showId {
                     TextField(viewModel.registrationData.taxIdType.placeholder, text: Binding(
-                        get: { viewModel.formatTaxId(viewModel.registrationData.taxId) },
-                        set: { viewModel.registrationData.taxId = $0.filter { $0.isNumber || $0 == "-" } }
+                        get: { formatIdNumber(viewModel.registrationData.taxId) },
+                        set: { newValue in
+                            let filtered = newValue.filter { $0.isNumber || $0 == "-" }
+                            viewModel.registrationData.taxId = filtered
+                            // Security: Store to Keychain immediately and reset auto-mask timer
+                            onIdChanged(filtered)
+                        }
                     ))
                     .font(.system(.body, design: .monospaced))
                     .foregroundColor(.textPrimary)
                     .keyboardType(.numberPad)
-                    .focused($ssnFocused)
+                    .focused($idFocused)
+                    .onAppear {
+                        // Start auto-mask timer when field becomes visible
+                        resetAutoMaskTimer()
+                    }
                 } else {
-                    Text(maskedSSN)
+                    Text(maskedId)
                         .font(.system(.body, design: .monospaced))
                         .foregroundColor(.textPrimary)
                     
                     Spacer()
                     
                     Button(action: {
-                        showSSN = true
-                        ssnFocused = true
+                        showId = true
+                        idFocused = true
                     }) {
                         Text("Edit")
                             .font(.caption1Medium)
@@ -167,13 +229,13 @@ struct Step5_TaxInfoView: View {
             .cornerRadius(12)
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
-                    .stroke(ssnFocused ? Color.primaryPurple : Color.borderPrimary, lineWidth: ssnFocused ? 2 : 1)
+                    .stroke(idFocused ? Color.primaryPurple : Color.borderPrimary, lineWidth: idFocused ? 2 : 1)
             )
             
-            // SSN validation feedback
+            // ID validation feedback
             if !viewModel.registrationData.taxId.isEmpty {
                 let digits = viewModel.registrationData.taxId.filter { $0.isNumber }
-                if digits.count == 9 {
+                if digits.count >= expectedDigitCount {
                     HStack(spacing: 4) {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.caption1)
@@ -182,11 +244,25 @@ struct Step5_TaxInfoView: View {
                     }
                     .foregroundColor(.successGreen)
                 } else {
-                    Text("\(9 - digits.count) more digits needed")
+                    let remaining = expectedDigitCount - digits.count
+                    Text("\(remaining) more digit\(remaining == 1 ? "" : "s") needed")
                         .font(.caption1)
                         .foregroundColor(.textTertiary)
                 }
             }
+        }
+    }
+    
+    /// Format ID number based on type
+    private func formatIdNumber(_ input: String) -> String {
+        switch viewModel.registrationData.taxIdType {
+        case .ssn, .itin:
+            return viewModel.formatTaxId(input)
+        case .kuwaitCivilId:
+            // Kuwait Civil ID: show as-is (12 digits)
+            return input.filter { $0.isNumber }
+        case .foreignPassport, .foreignId:
+            return input
         }
     }
     
@@ -249,7 +325,9 @@ struct Step5_TaxInfoView: View {
                         .font(.calloutMedium)
                         .foregroundColor(.textPrimary)
                     
-                    Text("Your SSN is encrypted immediately and never stored in plain text. We use the same security standards as major banks.")
+                    Text(isKuwait 
+                        ? "Your Civil ID is encrypted immediately and never stored in plain text. We use the same security standards as major banks."
+                        : "Your SSN is encrypted immediately and never stored in plain text. We use the same security standards as major banks.")
                         .font(.caption1)
                         .foregroundColor(.textSecondary)
                 }
@@ -262,13 +340,15 @@ struct Step5_TaxInfoView: View {
                     .stroke(Color.successGreen.opacity(0.2), lineWidth: 1)
             )
             
-            // IRS disclosure
+            // Regulatory disclosure
             HStack(alignment: .top, spacing: 8) {
                 Image(systemName: "info.circle")
                     .font(.system(size: 14))
                     .foregroundColor(.textTertiary)
                 
-                Text("We're required by the IRS to collect this information for tax reporting (Form 1099-B).")
+                Text(isKuwait
+                    ? "Your Civil ID is required by financial regulations to verify your identity and comply with anti-money laundering laws."
+                    : "We're required by the IRS to collect this information for tax reporting (Form 1099-B).")
                     .font(.caption1)
                     .foregroundColor(.textTertiary)
             }
@@ -277,29 +357,46 @@ struct Step5_TaxInfoView: View {
     
     // MARK: - Computed Properties
     
-    private var maskedSSN: String {
+    private var maskedId: String {
         let taxId = viewModel.registrationData.taxId
         let digits = taxId.filter { $0.isNumber }
         
-        if digits.isEmpty {
-            return "•••-••-••••"
+        switch viewModel.registrationData.taxIdType {
+        case .kuwaitCivilId:
+            // Kuwait Civil ID: show last 4 digits
+            if digits.isEmpty {
+                return "••••••••••••"
+            }
+            return "••••••••" + String(digits.suffix(4))
+            
+        case .ssn, .itin:
+            // US SSN/ITIN: show last 4 digits
+            if digits.isEmpty {
+                return "•••-••-••••"
+            }
+            return "•••-••-" + String(digits.suffix(4))
+            
+        case .foreignPassport, .foreignId:
+            if digits.isEmpty {
+                return "••••••••"
+            }
+            return "••••" + String(digits.suffix(4))
         }
-        
-        let masked = "•••-••-" + String(digits.suffix(4))
-        return masked
     }
     
     private var taxResidenceFlag: String {
-        Country.common.first { $0.code == viewModel.registrationData.countryOfTaxResidence }?.flag ?? "🇺🇸"
+        Country.common.first { $0.code == viewModel.registrationData.countryOfTaxResidence }?.flag ?? "🇰🇼"
     }
     
     private var taxResidenceName: String {
-        Country.common.first { $0.code == viewModel.registrationData.countryOfTaxResidence }?.name ?? "United States"
+        Country.common.first { $0.code == viewModel.registrationData.countryOfTaxResidence }?.name ?? "Kuwait"
     }
     
     private var isFormValid: Bool {
         let digits = viewModel.registrationData.taxId.filter { $0.isNumber }
         switch viewModel.registrationData.taxIdType {
+        case .kuwaitCivilId:
+            return digits.count == 12
         case .ssn, .itin:
             return digits.count == 9
         case .foreignPassport, .foreignId:
@@ -312,12 +409,13 @@ struct Step5_TaxInfoView: View {
 
 struct TaxIdTypePickerSheet: View {
     @Binding var selectedType: TaxIdType
+    var availableTypes: [TaxIdType] = TaxIdType.kuwaitOptions  // Default to Kuwait options
     @Environment(\.dismiss) private var dismiss
     
     var body: some View {
         NavigationStack {
             List {
-                ForEach(TaxIdType.allCases, id: \.self) { type in
+                ForEach(availableTypes, id: \.self) { type in
                     Button(action: {
                         selectedType = type
                         dismiss()

@@ -53,48 +53,254 @@ struct RegistrationValidator {
         guard cleaned.count == 9, cleaned.allSatisfy({ $0.isNumber }) else {
             return .invalid("Please enter a valid 9-digit SSN")
         }
-        // Invalid SSN patterns per IRS/SSA rules
-        let invalidPatterns = ["000", "666", "9"]
-        if invalidPatterns.contains(where: { cleaned.hasPrefix($0) }) {
+        
+        // Get area number (first 3 digits)
+        let areaNumber = String(cleaned.prefix(3))
+        guard let areaNum = Int(areaNumber) else {
             return .invalid("Please enter a valid SSN")
         }
-        // Middle two digits cannot be 00
-        let middleDigits = cleaned.dropFirst(3).prefix(2)
+        
+        // Invalid area numbers per SSA rules:
+        // - 000: Never assigned
+        // - 666: Never assigned (superstitious reasons)
+        // - 900-999: Reserved for ITINs, not valid SSNs
+        if areaNum == 0 || areaNum == 666 {
+            return .invalid("Please enter a valid SSN")
+        }
+        
+        // Area numbers 900-999 are ITINs, not SSNs
+        // ITINs should use validateITIN() instead
+        if areaNum >= 900 && areaNum <= 999 {
+            return .invalid("This appears to be an ITIN, not an SSN. Please select ITIN as your tax ID type.")
+        }
+        
+        // Middle two digits (group number) cannot be 00
+        let middleDigits = String(cleaned.dropFirst(3).prefix(2))
         if middleDigits == "00" {
             return .invalid("Please enter a valid SSN")
         }
-        // Last four digits cannot be 0000
-        let lastFour = cleaned.suffix(4)
+        
+        // Last four digits (serial number) cannot be 0000
+        let lastFour = String(cleaned.suffix(4))
         if lastFour == "0000" {
             return .invalid("Please enter a valid SSN")
         }
+        
+        // Check for sequential patterns (ascending)
+        let sequentialAscending = ["123456789", "012345678", "234567890"]
+        if sequentialAscending.contains(cleaned) {
+            return .invalid("Please enter a valid SSN")
+        }
+        
+        // Check for sequential patterns (descending)
+        let sequentialDescending = ["987654321", "876543210"]
+        if sequentialDescending.contains(cleaned) {
+            return .invalid("Please enter a valid SSN")
+        }
+        
+        // IRS test SSNs and well-known invalid numbers
+        let irsTestSSNs = [
+            "078051120", // Woolworth wallet SSN (1938 promotional)
+            "219099999", // Used in advertisements
+            "457555462", // Lifelock CEO's publicized SSN
+        ]
+        if irsTestSSNs.contains(cleaned) {
+            return .invalid("Please enter a valid SSN")
+        }
+        
+        // Check for repeating digit patterns (e.g., 111111111, 222222222)
+        let uniqueDigits = Set(cleaned)
+        if uniqueDigits.count == 1 {
+            return .invalid("Please enter a valid SSN")
+        }
+        
+        // Check for obviously fake patterns (e.g., 123123123, 111222333)
+        if isRepeatingPattern(cleaned) {
+            return .invalid("Please enter a valid SSN")
+        }
+        
+        return .valid
+    }
+    
+    /// Check for repeating patterns in SSN (e.g., 123123123)
+    private static func isRepeatingPattern(_ ssn: String) -> Bool {
+        // Check for 3-digit repeating pattern (e.g., 123123123)
+        if ssn.count == 9 {
+            let first3 = String(ssn.prefix(3))
+            let mid3 = String(ssn.dropFirst(3).prefix(3))
+            let last3 = String(ssn.suffix(3))
+            if first3 == mid3 && mid3 == last3 {
+                return true
+            }
+        }
+        return false
+    }
+    
+    // MARK: - ITIN Validation (US)
+    
+    /// Validate Individual Taxpayer Identification Number (ITIN)
+    /// ITINs are 9-digit numbers beginning with 9, with 4th-5th digits in range 50-65, 70-88, 90-92, 94-99
+    static func validateITIN(_ itin: String) -> ValidationResult {
+        let cleaned = itin.replacingOccurrences(of: "-", with: "")
+        guard cleaned.count == 9, cleaned.allSatisfy({ $0.isNumber }) else {
+            return .invalid("Please enter a valid 9-digit ITIN")
+        }
+        
+        // ITIN must start with 9
+        guard cleaned.hasPrefix("9") else {
+            return .invalid("ITIN must begin with 9")
+        }
+        
+        // Get the 4th and 5th digits (group number for ITIN)
+        let groupDigits = String(cleaned.dropFirst(3).prefix(2))
+        guard let groupNum = Int(groupDigits) else {
+            return .invalid("Please enter a valid ITIN")
+        }
+        
+        // Valid ITIN group numbers: 50-65, 70-88, 90-92, 94-99
+        let validRanges = [
+            50...65,
+            70...88,
+            90...92,
+            94...99
+        ]
+        
+        let isValidGroup = validRanges.contains { $0.contains(groupNum) }
+        guard isValidGroup else {
+            return .invalid("Please enter a valid ITIN")
+        }
+        
+        // Last four digits cannot be 0000
+        let lastFour = String(cleaned.suffix(4))
+        if lastFour == "0000" {
+            return .invalid("Please enter a valid ITIN")
+        }
+        
         return .valid
     }
     
     // MARK: - Phone Validation
     
-    static func validatePhone(_ phone: String) -> ValidationResult {
+    /// Validate phone number with country-specific rules
+    /// - Parameters:
+    ///   - phone: Phone number (digits only or with formatting)
+    ///   - countryCode: ISO country code (e.g., "KWT", "USA")
+    /// - Returns: ValidationResult
+    static func validatePhone(_ phone: String, countryCode: String = "USA") -> ValidationResult {
         let cleaned = phone.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()
-        guard cleaned.count >= 10 && cleaned.count <= 15 else {
-            return .invalid("Please enter a valid phone number")
-        }
+        
         // Check for obviously invalid patterns (all same digit)
         let uniqueDigits = Set(cleaned)
-        if uniqueDigits.count == 1 {
+        if uniqueDigits.count == 1 && cleaned.count > 3 {
             return .invalid("Please enter a valid phone number")
         }
+        
+        switch countryCode {
+        case "KWT":
+            // Kuwait: 8 digits, starting with 5, 6, or 9 (mobile)
+            // Or 7 digits starting with 2 (landline)
+            if cleaned.count == 8 {
+                guard let firstDigit = cleaned.first, ["5", "6", "9"].contains(String(firstDigit)) else {
+                    return .invalid("Kuwait mobile numbers start with 5, 6, or 9")
+                }
+            } else if cleaned.count == 7 {
+                guard let firstDigit = cleaned.first, firstDigit == "2" else {
+                    return .invalid("Kuwait landline numbers start with 2")
+                }
+            } else {
+                return .invalid("Kuwait phone numbers must be 7 or 8 digits")
+            }
+            
+        case "USA":
+            // US: 10 digits (area code + 7 digit number)
+            guard cleaned.count == 10 else {
+                return .invalid("US phone number must be 10 digits")
+            }
+            // First digit of area code cannot be 0 or 1
+            guard let firstDigit = cleaned.first, !["0", "1"].contains(String(firstDigit)) else {
+                return .invalid("Please enter a valid US phone number")
+            }
+            
+        default:
+            // International: 7-15 digits
+            guard cleaned.count >= 7 && cleaned.count <= 15 else {
+                return .invalid("Please enter a valid phone number")
+            }
+        }
+        
         return .valid
     }
     
     // MARK: - ZIP Code Validation
     
     static func validateZipCode(_ zip: String, country: String) -> ValidationResult {
-        if country == "USA" {
+        switch country {
+        case "USA":
+            // US ZIP codes: 5 digits or 5+4 format
             let zipRegex = "^[0-9]{5}(-[0-9]{4})?$"
             guard zip.range(of: zipRegex, options: .regularExpression) != nil else {
                 return .invalid("Please enter a valid ZIP code")
             }
+        case "KWT":
+            // Kuwait postal codes: 5 digits
+            let kuwaitRegex = "^[0-9]{5}$"
+            guard zip.range(of: kuwaitRegex, options: .regularExpression) != nil else {
+                return .invalid("Please enter a valid 5-digit postal code")
+            }
+        default:
+            // For other countries, just check it's not empty and has reasonable length
+            guard !zip.isEmpty && zip.count >= 3 && zip.count <= 10 else {
+                return .invalid("Please enter a valid postal code")
+            }
         }
+        return .valid
+    }
+    
+    /// Validates Kuwait Civil ID (الرقم المدني)
+    /// Kuwait Civil ID is a 12-digit number where:
+    /// - First digit indicates century/nationality: 1=born 1900s, 2=born 2000s, 3=non-citizen
+    /// - Next 6 digits: date of birth (YYMMDD)
+    /// - Last 5 digits: serial number
+    static func validateKuwaitCivilId(_ civilId: String) -> ValidationResult {
+        let digits = civilId.filter { $0.isNumber }
+        
+        // Must be exactly 12 digits
+        guard digits.count == 12 else {
+            return .invalid("Kuwait Civil ID must be 12 digits")
+        }
+        
+        // First digit must be 1, 2, or 3
+        // 1 = Kuwaiti born in 1900s
+        // 2 = Kuwaiti born in 2000s
+        // 3 = Non-Kuwaiti resident
+        guard let firstDigit = digits.first, ["1", "2", "3"].contains(String(firstDigit)) else {
+            return .invalid("Please enter a valid Kuwait Civil ID")
+        }
+        
+        // Extract birth date components (digits 2-7: YYMMDD)
+        let yearStr = String(digits.dropFirst(1).prefix(2))
+        let monthStr = String(digits.dropFirst(3).prefix(2))
+        let dayStr = String(digits.dropFirst(5).prefix(2))
+        
+        guard let month = Int(monthStr), month >= 1 && month <= 12 else {
+            return .invalid("Please enter a valid Kuwait Civil ID")
+        }
+        
+        guard let day = Int(dayStr), day >= 1 && day <= 31 else {
+            return .invalid("Please enter a valid Kuwait Civil ID")
+        }
+        
+        // Check for obviously invalid patterns (all same digit)
+        let uniqueDigits = Set(digits)
+        if uniqueDigits.count == 1 {
+            return .invalid("Please enter a valid Kuwait Civil ID")
+        }
+        
+        // Check for sequential patterns
+        if digits == "123456789012" || digits == "210987654321" {
+            return .invalid("Please enter a valid Kuwait Civil ID")
+        }
+        
         return .valid
     }
     
@@ -330,6 +536,34 @@ final class SecureKeychainStorage {
         deleteTaxId()
         deleteAuthToken()
     }
+    
+    // MARK: - Fresh Install Check
+    
+    /// Clears Keychain data on fresh app install
+    /// Keychain data persists even after app uninstall, so we need to detect fresh installs
+    /// Call this at app launch (e.g., in AppDelegate or App init)
+    static func clearKeychainIfFreshInstall() {
+        let hasLaunchedKey = "com.forsaapp.hasLaunchedBefore"
+        
+        if !UserDefaults.standard.bool(forKey: hasLaunchedKey) {
+            // Fresh install detected - clear any stale Keychain data from previous installation
+            print("🔐 Fresh install detected - clearing stale Keychain data")
+            SecureKeychainStorage.shared.clearAllSensitiveData()
+            
+            // Also clear the encryption key to ensure fresh start
+            let encryptionKeyQuery: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrAccount as String: "com.forsaapp.encryptionKey"
+            ]
+            SecItemDelete(encryptionKeyQuery as CFDictionary)
+            
+            // Mark as launched
+            UserDefaults.standard.set(true, forKey: hasLaunchedKey)
+            UserDefaults.standard.synchronize()
+            
+            print("✅ Keychain cleared for fresh install")
+        }
+    }
 }
 
 // MARK: - Sensitive Data Encryption
@@ -480,8 +714,9 @@ final class SessionTimeoutManager: ObservableObject {
     
     static let shared = SessionTimeoutManager()
     
-    /// Session timeout duration (30 minutes for incomplete registrations)
-    private let timeoutDuration: TimeInterval = 30 * 60 // 30 minutes
+    /// Session timeout duration (15 minutes for financial compliance)
+    /// Reduced from 30 to 15 minutes per SEC-5 security requirements
+    private let timeoutDuration: TimeInterval = 15 * 60 // 15 minutes
     
     /// Last activity timestamp
     @Published private(set) var lastActivityTime: Date = Date()

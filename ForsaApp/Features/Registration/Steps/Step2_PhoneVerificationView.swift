@@ -20,6 +20,10 @@ struct Step2_PhoneVerificationView: View {
     @State private var selectedChannel: VerificationChannel = .sms
     @FocusState private var otpFocused: Bool
     
+    // Rate limit countdown state
+    @State private var rateLimitCountdown: Int = 0
+    @State private var isShowingRateLimitBanner = false
+    
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     
     var body: some View {
@@ -55,11 +59,44 @@ struct Step2_PhoneVerificationView: View {
             CountryPickerSheet(selectedCountry: $selectedCountry)
         }
         .onReceive(timer) { _ in
+            // Handle resend timer countdown
             if resendTimer > 0 && viewModel.otpSent {
                 resendTimer -= 1
                 if resendTimer == 0 {
                     canResend = true
                 }
+            }
+            
+            // Handle rate limit countdown
+            if rateLimitCountdown > 0 {
+                rateLimitCountdown -= 1
+                if rateLimitCountdown == 0 {
+                    // Rate limit expired - allow retry
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                        isShowingRateLimitBanner = false
+                    }
+                }
+            }
+        }
+        .onChange(of: viewModel.isOTPRateLimited) { _, isRateLimited in
+            if isRateLimited {
+                // Start countdown when rate limited
+                rateLimitCountdown = viewModel.otpCooldownSeconds
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                    isShowingRateLimitBanner = true
+                }
+            } else {
+                // Rate limit cleared - hide banner
+                rateLimitCountdown = 0
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                    isShowingRateLimitBanner = false
+                }
+            }
+        }
+        .onChange(of: viewModel.otpCooldownSeconds) { _, newValue in
+            // Update countdown if it changes from the ViewModel
+            if viewModel.isOTPRateLimited && newValue > 0 {
+                rateLimitCountdown = newValue
             }
         }
         .onChange(of: viewModel.isPhoneVerified) { _, isVerified in
@@ -319,55 +356,176 @@ struct Step2_PhoneVerificationView: View {
     // MARK: - Resend Code Section
     
     private var resendCodeSection: some View {
-        VStack(spacing: 8) {
-            Text("Didn't receive the code?")
-                .font(.callout)
-                .foregroundColor(.textSecondary)
-            
-            if viewModel.isOTPRateLimited {
-                // Rate limited
-                Text("Too many attempts. Try again later.")
-                    .font(.calloutMedium)
-                    .foregroundColor(.errorRed)
-            } else if canResend {
-                // Can resend
-                HStack(spacing: 16) {
-                    Button(action: {
-                        Task {
-                            canResend = false
-                            resendTimer = 60
-                            await viewModel.resendOTP(channel: .sms)
-                        }
-                    }) {
-                        Label("SMS", systemImage: "message.fill")
-                            .font(.calloutMedium)
-                            .foregroundColor(.primaryPurple)
-                    }
-                    .disabled(viewModel.isSendingOTP)
-                    
-                    Text("or")
-                        .font(.callout)
-                        .foregroundColor(.textTertiary)
-                    
-                    Button(action: {
-                        Task {
-                            canResend = false
-                            resendTimer = 60
-                            await viewModel.resendOTP(channel: .call)
-                        }
-                    }) {
-                        Label("Call Me", systemImage: "phone.fill")
-                            .font(.calloutMedium)
-                            .foregroundColor(.primaryPurple)
-                    }
-                    .disabled(viewModel.isSendingOTP)
-                }
+        VStack(spacing: 12) {
+            // Show rate limit banner when rate limited
+            if isShowingRateLimitBanner || viewModel.isOTPRateLimited {
+                rateLimitBanner
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .top).combined(with: .opacity),
+                        removal: .opacity
+                    ))
             } else {
-                // Countdown timer
-                Text("Resend in \(resendTimer)s")
-                    .font(.calloutMedium)
-                    .foregroundColor(.textTertiary)
+                Text("Didn't receive the code?")
+                    .font(.callout)
+                    .foregroundColor(.textSecondary)
+                
+                if canResend {
+                    // Can resend
+                    HStack(spacing: 16) {
+                        Button(action: {
+                            Task {
+                                canResend = false
+                                resendTimer = 60
+                                await viewModel.resendOTP(channel: .sms)
+                            }
+                        }) {
+                            Label("SMS", systemImage: "message.fill")
+                                .font(.calloutMedium)
+                                .foregroundColor(.primaryPurple)
+                        }
+                        .disabled(viewModel.isSendingOTP)
+                        
+                        Text("or")
+                            .font(.callout)
+                            .foregroundColor(.textTertiary)
+                        
+                        Button(action: {
+                            Task {
+                                canResend = false
+                                resendTimer = 60
+                                await viewModel.resendOTP(channel: .call)
+                            }
+                        }) {
+                            Label("Call Me", systemImage: "phone.fill")
+                                .font(.calloutMedium)
+                                .foregroundColor(.primaryPurple)
+                        }
+                        .disabled(viewModel.isSendingOTP)
+                    }
+                } else {
+                    // Countdown timer
+                    Text("Resend in \(resendTimer)s")
+                        .font(.calloutMedium)
+                        .foregroundColor(.textTertiary)
+                }
             }
+        }
+    }
+    
+    // MARK: - Rate Limit Banner
+    
+    private var rateLimitBanner: some View {
+        VStack(spacing: 16) {
+            HStack(spacing: 12) {
+                // Animated warning icon
+                ZStack {
+                    Circle()
+                        .fill(Color.warningOrange.opacity(0.15))
+                        .frame(width: 44, height: 44)
+                    
+                    Image(systemName: "clock.badge.exclamationmark")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundColor(.warningOrange)
+                        .symbolEffect(.pulse, options: .repeating, isActive: rateLimitCountdown > 0)
+                }
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Too Many Attempts")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.textPrimary)
+                    
+                    Text("Please wait before trying again")
+                        .font(.caption)
+                        .foregroundColor(.textSecondary)
+                }
+                
+                Spacer()
+            }
+            
+            // Countdown timer display
+            countdownTimerDisplay
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color.warningOrange.opacity(0.08))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(Color.warningOrange.opacity(0.2), lineWidth: 1)
+                )
+        )
+    }
+    
+    private var countdownTimerDisplay: some View {
+        VStack(spacing: 8) {
+            // Circular progress indicator
+            ZStack {
+                Circle()
+                    .stroke(Color.warningOrange.opacity(0.2), lineWidth: 4)
+                    .frame(width: 72, height: 72)
+                
+                Circle()
+                    .trim(from: 0, to: countdownProgress)
+                    .stroke(
+                        Color.warningOrange,
+                        style: StrokeStyle(lineWidth: 4, lineCap: .round)
+                    )
+                    .frame(width: 72, height: 72)
+                    .rotationEffect(.degrees(-90))
+                    .animation(.linear(duration: 1), value: countdownProgress)
+                
+                VStack(spacing: 0) {
+                    Text(formattedCountdown)
+                        .font(.system(size: 20, weight: .bold, design: .monospaced))
+                        .foregroundColor(.warningOrange)
+                    
+                    Text("remaining")
+                        .font(.system(size: 8, weight: .medium))
+                        .foregroundColor(.textTertiary)
+                        .textCase(.uppercase)
+                }
+            }
+            
+            // Progress bar
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.warningOrange.opacity(0.2))
+                        .frame(height: 6)
+                    
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(
+                            LinearGradient(
+                                colors: [Color.warningOrange, Color.warningOrange.opacity(0.7)],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .frame(width: geometry.size.width * countdownProgress, height: 6)
+                        .animation(.linear(duration: 1), value: countdownProgress)
+                }
+            }
+            .frame(height: 6)
+            
+            Text("You can try again when the timer ends")
+                .font(.caption)
+                .foregroundColor(.textTertiary)
+        }
+    }
+    
+    private var countdownProgress: CGFloat {
+        guard viewModel.otpCooldownSeconds > 0 else { return 0 }
+        return CGFloat(rateLimitCountdown) / CGFloat(max(viewModel.otpCooldownSeconds, rateLimitCountdown))
+    }
+    
+    private var formattedCountdown: String {
+        let minutes = rateLimitCountdown / 60
+        let seconds = rateLimitCountdown % 60
+        if minutes > 0 {
+            return String(format: "%d:%02d", minutes, seconds)
+        } else {
+            return "\(seconds)s"
         }
     }
     
