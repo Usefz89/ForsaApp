@@ -168,6 +168,8 @@ class RegistrationViewModel: ObservableObject {
             self.registrationData = KYCRegistrationData()
             KYCRegistrationData.clear()
             SecureKeychainStorage.shared.clearAllSensitiveData()
+            // Reset phone verification state for fresh session
+            twilioService.reset()
         } else if let savedData = KYCRegistrationData.load() {
             // Load persisted data
             self.registrationData = savedData
@@ -177,8 +179,15 @@ class RegistrationViewModel: ObservableObject {
             if let storedSSN = SecureKeychainStorage.shared.retrieveTaxId() {
                 self.registrationData.taxId = storedSSN
             }
+            
+            // If resuming from before phone verification, reset Twilio state
+            if savedData.currentStep.rawValue <= RegistrationStep.phoneVerification.rawValue {
+                twilioService.reset()
+            }
         } else {
+            // Brand new registration - reset all phone verification state
             self.registrationData = KYCRegistrationData()
+            twilioService.reset()
         }
         
         setupAutoSave()
@@ -324,6 +333,13 @@ class RegistrationViewModel: ObservableObject {
         confirmPassword = ""
         error = nil
         stepValidationErrors = [:]
+        
+        // Reset phone verification state (clears attempt counter)
+        twilioService.reset()
+        isPhoneVerified = false
+        otpSent = false
+        verificationError = nil
+        verificationSid = nil
         
         // Reset session
         sessionManager.resetSession()
@@ -662,19 +678,54 @@ class RegistrationViewModel: ObservableObject {
     }
     
     private func validateAll() -> Bool {
-        // Validate all required steps
+        // Validate all required steps including phone verification
         let basicValid = validateBasicInfo()
+        let phoneValid = validatePhoneVerification()
         let personalValid = validatePersonalDetails()
         let addressValid = validateAddress()
         let taxValid = validateTaxFinancial()
         let disclosuresValid = validateDisclosures()
         let agreementsValid = validateAgreements()
         
-        return basicValid && personalValid && addressValid && taxValid && disclosuresValid && agreementsValid
+        return basicValid && phoneValid && personalValid && addressValid && taxValid && disclosuresValid && agreementsValid
     }
     
     private func clearErrorForCurrentStep() {
         stepValidationErrors[currentStep] = nil
+    }
+    
+    /// Builds a user-friendly error message from stepValidationErrors
+    /// Shows which steps have issues and what the first error is
+    private func buildValidationErrorMessage() -> String {
+        var failedSteps: [String] = []
+        var firstError: String?
+        
+        // Check each step in order
+        let stepsToCheck: [RegistrationStep] = [
+            .basicInfo, .phoneVerification, .personalDetails, 
+            .address, .taxFinancial, .disclosures, .agreements
+        ]
+        
+        for step in stepsToCheck {
+            if let errors = stepValidationErrors[step], !errors.isEmpty {
+                failedSteps.append(step.title)
+                if firstError == nil {
+                    firstError = errors.first
+                }
+            }
+        }
+        
+        if failedSteps.isEmpty {
+            return "Please complete all required fields"
+        }
+        
+        if failedSteps.count == 1 {
+            return firstError ?? "Please complete \(failedSteps[0])"
+        }
+        
+        // Multiple steps have errors
+        let stepsString = failedSteps.joined(separator: ", ")
+        return "Issues found in: \(stepsString). \(firstError ?? "Please review and complete.")"
     }
     
     // MARK: - Validation Helpers
@@ -956,7 +1007,7 @@ class RegistrationViewModel: ObservableObject {
         
         guard validateAll() else {
             showError = true
-            errorMessage = "Please complete all required fields"
+            errorMessage = buildValidationErrorMessage()
             return
         }
         
@@ -995,6 +1046,11 @@ class RegistrationViewModel: ObservableObject {
                 return
             }
             
+            // Save user info BEFORE clearing sensitive data (needed for auth flow)
+            UserDefaults.standard.set(registrationData.firstName, forKey: "user_first_name")
+            UserDefaults.standard.set(registrationData.lastName, forKey: "user_last_name")
+            UserDefaults.standard.set(registrationData.email, forKey: "forsa_user_email")
+            
             // ========== SECURITY: Clear Sensitive Data After Submission ==========
             
             // 1. Clear SSN from Keychain (no longer needed after account creation)
@@ -1027,6 +1083,9 @@ class RegistrationViewModel: ObservableObject {
             
             createdAccountId = accountId
             registrationComplete = true
+            
+            // Advance to account status view (Step 10)
+            currentStep = .review
             
         } catch let alpacaError as AlpacaAPIError {
             // Handle Alpaca-specific errors with user-friendly messages
@@ -1130,7 +1189,7 @@ class RegistrationViewModel: ObservableObject {
         }
         
         guard validateAll() else {
-            throw AlpacaAPIError.validationFailed("Please complete all required fields")
+            throw AlpacaAPIError.validationFailed(buildValidationErrorMessage())
         }
         
         // Get IP address for agreements
@@ -1161,6 +1220,11 @@ class RegistrationViewModel: ObservableObject {
             throw AlpacaAPIError.networkError("Session timed out during registration")
         }
         
+        // Save user info BEFORE clearing (needed for auth flow)
+        UserDefaults.standard.set(registrationData.firstName, forKey: "user_first_name")
+        UserDefaults.standard.set(registrationData.lastName, forKey: "user_last_name")
+        UserDefaults.standard.set(registrationData.email, forKey: "forsa_user_email")
+        
         // ========== SECURITY: Clear Sensitive Data After Submission ==========
         keychainStorage.deleteTaxId()
         keychainStorage.deleteSSN()
@@ -1186,6 +1250,9 @@ class RegistrationViewModel: ObservableObject {
         createdAccountId = accountId
         registrationComplete = true
         canRetrySubmission = false
+        
+        // Advance to account status view (Step 10)
+        currentStep = .review
     }
     
     /// Determines if an error is potentially recoverable by retrying

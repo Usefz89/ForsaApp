@@ -336,6 +336,96 @@ class AppCoordinator: ObservableObject {
         }
     }
     
+    // MARK: - Registration Completion
+    
+    /// Called when user finishes registration (account approved) and wants to do risk assessment
+    /// This triggers the app to show the OnboardingFlowView
+    func proceedToRiskAssessment() {
+        print("✅ Registration finished, proceeding to risk assessment...")
+        
+        // Ensure user is set up from registration data
+        ensureUserFromRegistration(hasCompletedKYC: false)
+        
+        // Set authenticated to show main app flow (not auth screens)
+        isAuthenticated = true
+        
+        // hasCompletedKYC = false ensures OnboardingFlowView is shown
+        hasCompletedKYC = false
+    }
+    
+    /// Called when user wants to skip risk assessment and go directly to dashboard
+    /// User can select portfolio later from the dashboard
+    func skipToDashboard() {
+        print("⏭️ Skipping risk assessment, going to dashboard...")
+        
+        // Ensure user is set up from registration data
+        ensureUserFromRegistration(hasCompletedKYC: true)
+        
+        // Set authenticated to show main app flow
+        isAuthenticated = true
+        
+        // Set hasCompletedKYC to true to show TabBarView (dashboard)
+        hasCompletedKYC = true
+    }
+    
+    /// Helper to create user from registration data if not already set
+    private func ensureUserFromRegistration(hasCompletedKYC: Bool) {
+        // If we already have a user, just update their KYC status
+        if var user = currentUser {
+            let updatedUser = User(
+                id: user.id,
+                email: user.email,
+                firstName: user.firstName,
+                lastName: user.lastName,
+                profileImageURL: user.profileImageURL,
+                isVerified: true,
+                createdAt: user.createdAt,
+                totalPortfolioValue: user.totalPortfolioValue,
+                totalGainLoss: user.totalGainLoss,
+                totalGainLossPercentage: user.totalGainLossPercentage,
+                followersCount: user.followersCount,
+                followingCount: user.followingCount,
+                isPublicProfile: user.isPublicProfile,
+                cashBalance: user.cashBalance,
+                hasCompletedKYC: hasCompletedKYC,
+                psychologicalRiskScore: user.psychologicalRiskScore,
+                goals: user.goals
+            )
+            updateSavedUser(updatedUser)
+            currentUser = updatedUser
+            return
+        }
+        
+        // Create user from saved registration data
+        let firstName = UserDefaults.standard.string(forKey: "user_first_name") ?? "User"
+        let lastName = UserDefaults.standard.string(forKey: "user_last_name") ?? ""
+        let email = UserDefaults.standard.string(forKey: "forsa_user_email") ?? ""
+        
+        let newUser = User(
+            email: email,
+            firstName: firstName,
+            lastName: lastName,
+            isVerified: true,
+            totalPortfolioValue: 0,
+            totalGainLoss: 0,
+            totalGainLossPercentage: 0,
+            followersCount: 0,
+            followingCount: 0,
+            isPublicProfile: false,
+            cashBalance: 0,
+            hasCompletedKYC: hasCompletedKYC
+        )
+        
+        updateSavedUser(newUser)
+        currentUser = newUser
+        
+        // Save login state
+        UserDefaults.standard.set(true, forKey: "forsa_is_logged_in")
+        UserDefaults.standard.synchronize()
+        
+        print("✅ Created user from registration: \(firstName) \(lastName)")
+    }
+    
     // MARK: - Onboarding Completion
     
     func completeOnboarding(riskScore: Int, goal: Goal) {
@@ -452,8 +542,11 @@ class AppCoordinator: ObservableObject {
     }
     
     /// Check for uninvested cash and auto-invest if conditions are met
-    /// NOTE: This is a FALLBACK mechanism. Primary auto-invest is handled by
-    /// Alpaca's Rebalancing API on their server (see setupServerSideAutoInvest)
+    /// This is the PRIMARY auto-invest mechanism when Rebalancing API is not available.
+    /// Called from Dashboard/Wallet views on load and refresh.
+    /// 
+    /// IMPORTANT: Uses buying_power (not cash) to determine if investing is possible.
+    /// Cash can be $325 but buying_power $0 if orders are pending.
     @discardableResult
     func checkAndAutoInvestAvailableCash() async -> Bool {
         // Skip for demo accounts
@@ -479,22 +572,37 @@ class AppCoordinator: ObservableObject {
         }
         
         do {
-            // Fetch current account details
+            // First check if there are pending orders
+            let pendingOrders = try await AlpacaTradingService.shared.fetchOpenOrders(accountId: accountId)
+            if !pendingOrders.isEmpty {
+                let pendingAmount = pendingOrders.reduce(0.0) { $0 + (Double($1.notional ?? "0") ?? 0) }
+                print("⏭️ Auto-invest skipped: \(pendingOrders.count) orders pending (reserved: $\(String(format: "%.2f", pendingAmount)))")
+                return false
+            }
+            
+            // Fetch current account details - use BUYING POWER, not cash
             let account = try await AlpacaTradingService.shared.fetchAccountDetails(accountId: accountId)
-            let availableCash = account.cashValue
+            let buyingPower = account.buyingPowerValue
+            let cashBalance = account.cashValue
             
             // Minimum amount to trigger auto-invest ($1)
             let minimumInvestAmount: Double = 1.0
             
-            guard availableCash >= minimumInvestAmount else {
-                print("⏭️ Auto-invest skipped: Insufficient cash ($\(String(format: "%.2f", availableCash)))")
+            // Check buying power, NOT cash balance
+            // buying_power = 0 means funds are reserved for pending orders
+            guard buyingPower >= minimumInvestAmount else {
+                if cashBalance >= minimumInvestAmount && buyingPower < minimumInvestAmount {
+                    print("⏭️ Auto-invest skipped: Buying power is $0 (cash: $\(String(format: "%.2f", cashBalance)) reserved for orders)")
+                } else {
+                    print("⏭️ Auto-invest skipped: Insufficient buying power ($\(String(format: "%.2f", buyingPower)))")
+                }
                 return false
             }
             
-            print("💰 Found $\(String(format: "%.2f", availableCash)) available cash - Auto-investing into \(portfolio.title)")
+            print("💰 Found $\(String(format: "%.2f", buyingPower)) buying power - Auto-investing into \(portfolio.title)")
             
-            // Perform the investment
-            let result = try await investInPortfolio(amount: availableCash)
+            // Perform the investment using buying power amount
+            let result = try await investInPortfolio(amount: buyingPower)
             
             if let result = result {
                 print("✅ Auto-investment complete: \(result.successCount) orders successful, $\(String(format: "%.2f", result.totalInvested)) invested")
@@ -568,7 +676,14 @@ class AppCoordinator: ObservableObject {
     }
     
     /// Sets up Alpaca's Rebalancing API for automatic investment of deposits
+    /// Uses beta endpoints: https://alpaca.markets/learn/how-to-get-started-with-rebalancing-api
     private func setupServerSideAutoInvest(portfolio: RiskLevel) async {
+        // Check if Rebalancing API is enabled in config
+        guard AppConfig.Alpaca.rebalancingAPIEnabled else {
+            print("ℹ️ Rebalancing API disabled in config. Using client-side auto-invest.")
+            return
+        }
+        
         // Skip for demo accounts
         guard let user = currentUser, !user.isDemoAccount else {
             print("⏭️ Server-side auto-invest skipped: Demo account")
@@ -583,10 +698,18 @@ class AppCoordinator: ObservableObject {
         do {
             try await AlpacaTradingService.shared.setupAutoInvest(accountId: accountId, portfolio: portfolio)
             print("✅ Server-side auto-invest configured for \(portfolio.title)")
+        } catch let error as RebalancingAPIError {
+            switch error {
+            case .featureNotEnabled:
+                print("ℹ️ Rebalancing API disabled. Client-side auto-invest active.")
+            default:
+                print("⚠️ Rebalancing API error: \(error.localizedDescription)")
+                print("   Client-side auto-invest will be used as fallback.")
+            }
         } catch {
-            // Log error but don't fail - client-side polling is still active as backup
+            // Log error but don't fail - client-side polling is available as backup
             print("⚠️ Server-side auto-invest setup failed: \(error.localizedDescription)")
-            print("   Client-side polling will be used as fallback")
+            print("   Client-side auto-invest will be used as fallback.")
         }
     }
 }

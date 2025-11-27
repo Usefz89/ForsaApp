@@ -130,7 +130,7 @@ struct Step8_TrustedContactView: View {
                 }
                 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(addContact ? "I want to add a trusted contact" : "I'll add a contact later")
+                    Text(addContact ? "I'll add a contact later" : "I want to add a trusted contact")
                         .font(.bodyMedium)
                         .foregroundColor(.textPrimary)
                     

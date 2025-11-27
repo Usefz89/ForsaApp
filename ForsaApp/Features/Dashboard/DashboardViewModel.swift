@@ -15,6 +15,7 @@ class DashboardViewModel: ObservableObject {
     @Published var totalGainLossPercentage: Double = 0
     @Published var totalDividends: Double = 0
     @Published var cashBalance: Double = 0
+    @Published var buyingPower: Double = 0  // Actual available funds for trading
     @Published var chartData: [ChartDataPoint] = []
     @Published var selectedTimeframe: TimeFrame = .oneWeek
     @Published var isLoading = false
@@ -26,14 +27,48 @@ class DashboardViewModel: ObservableObject {
     @Published var needsAccountCreation = false
     @Published var positions: [AlpacaPosition] = []
     
+    // Order tracking - critical for understanding true investment state
+    @Published var pendingOrders: [OpenOrder] = []
+    @Published var pendingOrdersSummary: PendingOrdersSummary = .empty
+    
     // Computed property to check if user has investments
     var hasPositions: Bool {
         !positions.isEmpty
     }
     
-    // Check if user can invest (has cash but no positions)
+    // Check if there are pending orders (funds reserved but not yet invested)
+    var hasPendingOrders: Bool {
+        !pendingOrders.isEmpty
+    }
+    
+    // The actual investment state considering positions, orders, and buying power
+    var investmentState: InvestmentState {
+        // If there are pending orders, funds are reserved
+        if hasPendingOrders {
+            return .ordersPending(summary: pendingOrdersSummary)
+        }
+        
+        // Check if user can actually invest (using buying power, not cash)
+        if buyingPower >= 1.0 {
+            return .canInvest(availableAmount: buyingPower)
+        }
+        
+        // Has cash but no buying power means funds are reserved elsewhere
+        if cashBalance >= 1.0 && buyingPower < 1.0 {
+            return .ordersPending(summary: pendingOrdersSummary)
+        }
+        
+        return .insufficientFunds
+    }
+    
+    // Check if user can invest - now uses buying power and checks pending orders
     var canInvestNow: Bool {
-        cashBalance >= 1.0 && !hasPositions
+        buyingPower >= 1.0 && !hasPositions && !hasPendingOrders
+    }
+    
+    // Amount available for new investments
+    var availableForInvestment: Double {
+        buyingPower
     }
     
     private let alpacaService = AlpacaTradingService.shared
@@ -119,13 +154,32 @@ class DashboardViewModel: ObservableObject {
         errorMessage = nil
         
         do {
-            // 1. Fetch Account Details
+            // 1. Fetch Account Details (includes cash AND buying power)
             let account = try await alpacaService.fetchAccountDetails(accountId: accountId)
             self.cashBalance = account.cashValue
+            self.buyingPower = account.buyingPowerValue  // Critical: track actual trading power
             
             // 2. Fetch Positions to calculate Total Invested (Cost Basis) and Market Value
             let fetchedPositions = try await alpacaService.fetchPositions(accountId: accountId)
             self.positions = fetchedPositions
+            
+            // 3. Fetch Open/Pending Orders - critical for understanding true state
+            do {
+                let openOrders = try await alpacaService.fetchOpenOrders(accountId: accountId)
+                self.pendingOrders = openOrders
+                self.pendingOrdersSummary = PendingOrdersSummary(orders: openOrders)
+                
+                if !openOrders.isEmpty {
+                    print("⏳ Pending Orders: \(openOrders.count)")
+                    for order in openOrders {
+                        print("   - \(order.symbol): \(order.displayAmount) (\(order.statusDisplayName))")
+                    }
+                }
+            } catch {
+                print("⚠️ Failed to fetch open orders: \(error)")
+                self.pendingOrders = []
+                self.pendingOrdersSummary = .empty
+            }
             
             // Calculate totals from positions
             let totalCostBasis = fetchedPositions.reduce(0.0) { $0 + (Double($1.costBasis) ?? 0) }
@@ -150,12 +204,15 @@ class DashboardViewModel: ObservableObject {
             
             print("📊 Portfolio Summary:")
             print("   Cash: $\(String(format: "%.2f", self.cashBalance))")
+            print("   Buying Power: $\(String(format: "%.2f", self.buyingPower))")
+            print("   Pending Orders: \(self.pendingOrders.count)")
             print("   Invested (Cost Basis): $\(String(format: "%.2f", totalCostBasis))")
             print("   Market Value: $\(String(format: "%.2f", totalMarketValue))")
             print("   Total Portfolio Value: $\(String(format: "%.2f", self.totalPortfolioValue))")
             print("   Gain/Loss: $\(String(format: "%.2f", unrealizedPL))")
+            print("   Can Invest Now: \(self.canInvestNow)")
             
-            // 3. Fetch History for Chart
+            // 4. Fetch History for Chart
             let points = try await alpacaService.fetchPortfolioHistory(
                 accountId: accountId,
                 period: mapTimeframeToPeriod(selectedTimeframe),

@@ -39,12 +39,84 @@ struct Step9_ReviewAgreementsView: View {
                 // Header
                 reviewHeader
                 
+                // Validation errors from previous steps (if any)
+                if hasValidationErrors {
+                    validationErrorsSection
+                }
+                
                 // Review sections
                 reviewSections
                 
                 // Agreements
                 agreementsSection
             }
+        }
+    }
+    
+    // MARK: - Validation Errors Section
+    
+    private var hasValidationErrors: Bool {
+        let stepsToCheck: [RegistrationStep] = [
+            .basicInfo, .phoneVerification, .personalDetails,
+            .address, .taxFinancial, .disclosures
+        ]
+        return stepsToCheck.contains { step in
+            !(viewModel.stepValidationErrors[step]?.isEmpty ?? true)
+        }
+    }
+    
+    private var validationErrorsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundColor(.warningYellow)
+                Text("Please fix the following issues:")
+                    .font(.calloutMedium)
+                    .foregroundColor(.textPrimary)
+            }
+            
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(stepsWithErrors, id: \.step) { stepError in
+                    HStack(alignment: .top, spacing: 8) {
+                        Circle()
+                            .fill(Color.errorRed)
+                            .frame(width: 6, height: 6)
+                            .padding(.top, 6)
+                        
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(stepError.step.title)
+                                .font(.calloutMedium)
+                                .foregroundColor(.textPrimary)
+                            
+                            ForEach(stepError.errors, id: \.self) { error in
+                                Text("• \(error)")
+                                    .font(.caption1)
+                                    .foregroundColor(.textSecondary)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .background(Color.warningYellow.opacity(0.1))
+        .cornerRadius(12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.warningYellow.opacity(0.3), lineWidth: 1)
+        )
+    }
+    
+    private var stepsWithErrors: [(step: RegistrationStep, errors: [String])] {
+        let stepsToCheck: [RegistrationStep] = [
+            .basicInfo, .phoneVerification, .personalDetails,
+            .address, .taxFinancial, .disclosures
+        ]
+        return stepsToCheck.compactMap { step in
+            if let errors = viewModel.stepValidationErrors[step], !errors.isEmpty {
+                return (step: step, errors: errors)
+            }
+            return nil
         }
     }
     
@@ -252,22 +324,40 @@ struct ReviewSectionCard: View {
             VStack(alignment: .leading, spacing: 8) {
                 ReviewRow(label: "Name", value: viewModel.registrationData.fullName)
                 ReviewRow(label: "Email", value: viewModel.registrationData.email)
-                ReviewRow(label: "Phone", value: viewModel.formatPhoneNumber(viewModel.registrationData.phoneNumber))
+                ReviewRow(label: "Phone", value: formatPhoneForDisplay(viewModel.registrationData.phoneNumber, country: viewModel.registrationData.country))
                 if let dob = viewModel.registrationData.dateOfBirth {
                     ReviewRow(label: "Date of Birth", value: formatDate(dob))
                 }
-                ReviewRow(label: "Citizenship", value: viewModel.registrationData.citizenship)
+                ReviewRow(label: "Citizenship", value: formatCountryName(viewModel.registrationData.citizenship))
             }
             
         case .address:
             VStack(alignment: .leading, spacing: 8) {
-                ReviewRow(label: "Street", value: viewModel.registrationData.streetAddress)
-                if let unit = viewModel.registrationData.apartmentUnit, !unit.isEmpty {
-                    ReviewRow(label: "Unit", value: unit)
+                // Check if Kuwait address format
+                if viewModel.registrationData.country == "KWT" {
+                    // Kuwait-specific address fields
+                    ReviewRow(label: "Area", value: viewModel.registrationData.area)
+                    ReviewRow(label: "Governorate", value: viewModel.registrationData.governorate)
+                    ReviewRow(label: "Block", value: viewModel.registrationData.block)
+                    ReviewRow(label: "Street", value: viewModel.registrationData.streetAddress)
+                    ReviewRow(label: "Building", value: viewModel.registrationData.building)
+                    if let floor = viewModel.registrationData.floor, !floor.isEmpty {
+                        ReviewRow(label: "Floor", value: floor)
+                    }
+                    if let unit = viewModel.registrationData.apartmentUnit, !unit.isEmpty {
+                        ReviewRow(label: "Apt", value: unit)
+                    }
+                    ReviewRow(label: "Country", value: "🇰🇼 Kuwait")
+                } else {
+                    // International address format
+                    ReviewRow(label: "Street", value: viewModel.registrationData.streetAddress)
+                    if let unit = viewModel.registrationData.apartmentUnit, !unit.isEmpty {
+                        ReviewRow(label: "Unit", value: unit)
+                    }
+                    ReviewRow(label: "City", value: viewModel.registrationData.city)
+                    ReviewRow(label: "State", value: viewModel.registrationData.state)
+                    ReviewRow(label: "ZIP", value: viewModel.registrationData.postalCode)
                 }
-                ReviewRow(label: "City", value: viewModel.registrationData.city)
-                ReviewRow(label: "State", value: viewModel.registrationData.state)
-                ReviewRow(label: "ZIP", value: viewModel.registrationData.postalCode)
             }
             
         case .financial:
@@ -297,6 +387,35 @@ struct ReviewSectionCard: View {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
         return formatter.string(from: date)
+    }
+    
+    /// Format phone number based on country
+    private func formatPhoneForDisplay(_ phone: String, country: String) -> String {
+        let digits = phone.filter { $0.isNumber }
+        
+        if country == "KWT" {
+            // Kuwait format: +965 XXXX XXXX (8 digits)
+            if digits.count == 8 {
+                let index1 = digits.index(digits.startIndex, offsetBy: 4)
+                return "+965 \(digits[..<index1]) \(digits[index1...])"
+            }
+            return "+965 \(digits)"
+        } else if country == "USA" {
+            // US format: (XXX) XXX-XXXX
+            return viewModel.formatPhoneNumber(phone)
+        } else {
+            // Generic international format
+            let dialCode = Country.common.first { $0.code == country }?.dialCode ?? ""
+            return "\(dialCode) \(digits)"
+        }
+    }
+    
+    /// Format country code to country name with flag
+    private func formatCountryName(_ code: String) -> String {
+        if let country = Country.common.first(where: { $0.code == code }) {
+            return "\(country.flag) \(country.name)"
+        }
+        return code
     }
 }
 

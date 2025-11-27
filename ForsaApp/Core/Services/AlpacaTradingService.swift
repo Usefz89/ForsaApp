@@ -1341,18 +1341,30 @@ class AlpacaTradingService: ObservableObject {
     
     /// Invests in a portfolio after user completes onboarding
     /// This is the main entry point for auto-investing
+    /// 
+    /// IMPORTANT: Uses buying_power to validate if trading is possible.
+    /// Cash balance can be > 0 while buying_power = 0 (funds reserved for pending orders)
     func investInPortfolio(accountId: String, portfolio: RiskLevel, amount: Double? = nil) async throws -> PortfolioInvestmentResult {
         print("🚀 Starting auto-investment in \(portfolio.title) portfolio")
         
-        // Get current account to check available cash
+        // Get current account to check available buying power (NOT just cash)
         let account = try await fetchAccountDetails(accountId: accountId)
-        let availableCash = account.cashValue
+        let buyingPower = account.buyingPowerValue
+        let cashBalance = account.cashValue
         
-        // Use specified amount or all available cash
-        let investmentAmount = amount ?? availableCash
+        // Use buying power as the source of truth for what's actually available
+        let availableForTrading = buyingPower
+        
+        // Use specified amount or all available buying power
+        let investmentAmount = min(amount ?? availableForTrading, availableForTrading)
         
         guard investmentAmount >= 1.0 else {
-            print("⚠️ Insufficient funds for investment: $\(String(format: "%.2f", investmentAmount))")
+            if cashBalance >= 1.0 && buyingPower < 1.0 {
+                print("⚠️ Cannot invest: Cash ($\(String(format: "%.2f", cashBalance))) is reserved. Buying power: $\(String(format: "%.2f", buyingPower))")
+                print("   This usually means orders are pending for market open.")
+            } else {
+                print("⚠️ Insufficient funds for investment: $\(String(format: "%.2f", investmentAmount))")
+            }
             return PortfolioInvestmentResult(
                 totalInvested: 0,
                 orderResults: [],
@@ -1361,7 +1373,8 @@ class AlpacaTradingService: ObservableObject {
             )
         }
         
-        print("💰 Available cash: $\(String(format: "%.2f", availableCash))")
+        print("💰 Cash Balance: $\(String(format: "%.2f", cashBalance))")
+        print("💳 Buying Power: $\(String(format: "%.2f", buyingPower))")
         print("💵 Investment amount: $\(String(format: "%.2f", investmentAmount))")
         
         return try await placeBasketOrder(accountId: accountId, amount: investmentAmount, portfolio: portfolio)
@@ -1377,6 +1390,76 @@ class AlpacaTradingService: ObservableObject {
         let positions = try JSONDecoder().decode([AlpacaPosition].self, from: data)
         await MainActor.run { self.currentPositions = positions }
         return positions
+    }
+    
+    // MARK: - Order Management
+    
+    /// Fetches all open/pending orders for an account
+    /// These are orders that have been submitted but not yet filled (e.g., market closed)
+    func fetchOpenOrders(accountId: String) async throws -> [OpenOrder] {
+        let url = URL(string: "\(brokerBaseURL)/trading/accounts/\(accountId)/orders?status=open")!
+        
+        let request = try createBrokerRequest(url: url, method: "GET")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        // Log raw response for debugging
+        if let responseString = String(data: data, encoding: .utf8) {
+            print("📋 Open Orders Response: \(responseString.prefix(500))")
+        }
+        
+        try validateResponse(response, data: data)
+        
+        let orders = try JSONDecoder().decode([OpenOrder].self, from: data)
+        print("📊 Found \(orders.count) open orders")
+        
+        return orders
+    }
+    
+    /// Fetches all orders (open, closed, all) for an account
+    func fetchAllOrders(accountId: String, status: String = "all", limit: Int = 50) async throws -> [OpenOrder] {
+        var urlString = "\(brokerBaseURL)/trading/accounts/\(accountId)/orders?limit=\(limit)"
+        if status != "all" {
+            urlString += "&status=\(status)"
+        }
+        
+        let url = URL(string: urlString)!
+        let request = try createBrokerRequest(url: url, method: "GET")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validateResponse(response, data: data)
+        
+        return try JSONDecoder().decode([OpenOrder].self, from: data)
+    }
+    
+    /// Cancels a specific order
+    func cancelOrder(accountId: String, orderId: String) async throws {
+        print("🚫 Cancelling order: \(orderId)")
+        
+        let url = URL(string: "\(brokerBaseURL)/trading/accounts/\(accountId)/orders/\(orderId)")!
+        let request = try createBrokerRequest(url: url, method: "DELETE")
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validateResponse(response, data: data)
+        
+        print("✅ Order cancelled successfully")
+    }
+    
+    /// Cancels all open orders for an account
+    func cancelAllOrders(accountId: String) async throws {
+        print("🚫 Cancelling all open orders for account: \(accountId)")
+        
+        let url = URL(string: "\(brokerBaseURL)/trading/accounts/\(accountId)/orders")!
+        let request = try createBrokerRequest(url: url, method: "DELETE")
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try validateResponse(response, data: data)
+        
+        print("✅ All orders cancelled")
+    }
+    
+    /// Gets a summary of pending orders with total reserved amount
+    func getPendingOrdersSummary(accountId: String) async throws -> PendingOrdersSummary {
+        let orders = try await fetchOpenOrders(accountId: accountId)
+        return PendingOrdersSummary(orders: orders)
     }
     
     func fetchPortfolioHistory(accountId: String, period: String = "1M", timeframe: String = "1D") async throws -> [ChartDataPoint] {
@@ -1432,12 +1515,21 @@ class AlpacaTradingService: ObservableObject {
     }
     
     // MARK: - Rebalancing API (Server-Side Auto-Invest)
+    // Uses Alpaca's beta rebalancing endpoints for automatic portfolio management.
+    // See: https://alpaca.markets/learn/how-to-get-started-with-rebalancing-api
+    
+    private let rebalancingBaseURL = AppConfig.Alpaca.rebalancingBaseURL
     
     /// Creates a rebalancing portfolio on Alpaca that matches our RiskLevel portfolio
     func createRebalancingPortfolio(portfolio: RiskLevel) async throws -> String {
+        // Check if Rebalancing API is enabled
+        guard AppConfig.Alpaca.rebalancingAPIEnabled else {
+            throw RebalancingAPIError.featureNotEnabled
+        }
+        
         print("📊 Creating rebalancing portfolio: \(portfolio.title)")
         
-        let url = URL(string: "\(brokerBaseURL)/rebalancing/portfolios")!
+        let url = URL(string: "\(rebalancingBaseURL)/portfolios")!
         var request = try createBrokerRequest(url: url, method: "POST")
         
         // Build weights from portfolio allocations
@@ -1494,7 +1586,7 @@ class AlpacaTradingService: ObservableObject {
         let portfolioName = "Forsa_\(portfolio.rawValue)"
         
         // First, try to find existing portfolio
-        let url = URL(string: "\(brokerBaseURL)/rebalancing/portfolios")!
+        let url = URL(string: "\(rebalancingBaseURL)/portfolios")!
         let request = try createBrokerRequest(url: url, method: "GET")
         
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -1516,7 +1608,7 @@ class AlpacaTradingService: ObservableObject {
     func subscribeAccountToPortfolio(accountId: String, portfolioId: String) async throws {
         print("📝 Subscribing account \(accountId) to portfolio \(portfolioId)")
         
-        let url = URL(string: "\(brokerBaseURL)/rebalancing/subscriptions")!
+        let url = URL(string: "\(rebalancingBaseURL)/subscriptions")!
         var request = try createBrokerRequest(url: url, method: "POST")
         
         let body: [String: Any] = [
@@ -1538,7 +1630,7 @@ class AlpacaTradingService: ObservableObject {
     
     /// Checks if an account is subscribed to any rebalancing portfolio
     func getAccountSubscription(accountId: String) async throws -> (subscriptionId: String, portfolioId: String)? {
-        let url = URL(string: "\(brokerBaseURL)/rebalancing/subscriptions?account_id=\(accountId)")!
+        let url = URL(string: "\(rebalancingBaseURL)/subscriptions?account_id=\(accountId)")!
         let request = try createBrokerRequest(url: url, method: "GET")
         
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -1558,7 +1650,7 @@ class AlpacaTradingService: ObservableObject {
     func unsubscribeAccount(subscriptionId: String) async throws {
         print("🗑️ Removing subscription: \(subscriptionId)")
         
-        let url = URL(string: "\(brokerBaseURL)/rebalancing/subscriptions/\(subscriptionId)")!
+        let url = URL(string: "\(rebalancingBaseURL)/subscriptions/\(subscriptionId)")!
         let request = try createBrokerRequest(url: url, method: "DELETE")
         
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -1570,7 +1662,7 @@ class AlpacaTradingService: ObservableObject {
     func triggerInvestRun(accountId: String, portfolioId: String) async throws {
         print("🚀 Triggering invest run for account \(accountId)")
         
-        let url = URL(string: "\(brokerBaseURL)/rebalancing/runs")!
+        let url = URL(string: "\(rebalancingBaseURL)/runs")!
         var request = try createBrokerRequest(url: url, method: "POST")
         
         let body: [String: Any] = [
@@ -1591,10 +1683,16 @@ class AlpacaTradingService: ObservableObject {
         print("✅ Invest run triggered")
     }
     
-    /// Sets up complete auto-invest for an account with a portfolio
+    /// Sets up complete auto-invest for an account with a portfolio using Alpaca's Rebalancing API
     /// Call this when user selects a portfolio
+    /// See: https://alpaca.markets/learn/how-to-get-started-with-rebalancing-api
     func setupAutoInvest(accountId: String, portfolio: RiskLevel) async throws {
-        print("⚙️ Setting up auto-invest for \(portfolio.title)")
+        // Check if Rebalancing API is enabled in config
+        guard AppConfig.Alpaca.rebalancingAPIEnabled else {
+            throw RebalancingAPIError.featureNotEnabled
+        }
+        
+        print("⚙️ Setting up Rebalancing API auto-invest for \(portfolio.title)")
         
         // 1. Check if already subscribed to a different portfolio
         if let existingSubscription = try await getAccountSubscription(accountId: accountId) {
@@ -1614,7 +1712,7 @@ class AlpacaTradingService: ObservableObject {
             try await triggerInvestRun(accountId: accountId, portfolioId: portfolioId)
         }
         
-        print("✅ Auto-invest setup complete for \(portfolio.title)")
+        print("✅ Rebalancing API auto-invest setup complete for \(portfolio.title)")
     }
     
     // MARK: - Helpers
@@ -2075,6 +2173,27 @@ enum AlpacaAPIError: Error, LocalizedError {
             return "Please upload a valid document."
         default:
             return "Please try again or contact support if the issue persists."
+        }
+    }
+}
+
+/// Errors specific to the Rebalancing API
+enum RebalancingAPIError: Error, LocalizedError {
+    case featureNotEnabled
+    case insufficientPermissions
+    case portfolioNotFound
+    case subscriptionFailed(String)
+    
+    var errorDescription: String? {
+        switch self {
+        case .featureNotEnabled:
+            return "Rebalancing API is not enabled. Using client-side auto-invest instead."
+        case .insufficientPermissions:
+            return "Your Alpaca account doesn't have Rebalancing API permissions. Contact Alpaca support to enable this feature."
+        case .portfolioNotFound:
+            return "Rebalancing portfolio not found."
+        case .subscriptionFailed(let message):
+            return "Failed to subscribe to portfolio: \(message)"
         }
     }
 }

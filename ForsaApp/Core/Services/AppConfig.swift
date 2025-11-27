@@ -23,7 +23,15 @@ struct AppConfig {
         static let brokerBaseURL = "https://broker-api.sandbox.alpaca.markets/v1"
         
         // Market Data API Base URL
-        static let dataBaseURL = "https://data.alpaca.markets/v2" 
+        static let dataBaseURL = "https://data.alpaca.markets/v2"
+        
+        // MARK: - Rebalancing API Settings
+        // Enable/disable server-side rebalancing feature
+        static let rebalancingAPIEnabled = true
+        
+        // Rebalancing API uses beta endpoints
+        // See: https://alpaca.markets/learn/how-to-get-started-with-rebalancing-api
+        static let rebalancingBaseURL = "https://broker-api.sandbox.alpaca.markets/v1/beta/rebalancing"
     }
     
     struct Currency {

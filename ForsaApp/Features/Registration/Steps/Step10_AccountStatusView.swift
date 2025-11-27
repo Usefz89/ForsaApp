@@ -12,6 +12,7 @@ import SwiftUI
 struct Step10_AccountStatusView: View {
     @ObservedObject var viewModel: RegistrationViewModel
     @EnvironmentObject var coordinator: AppCoordinator
+    @Environment(\.dismiss) private var dismiss
     
     @State private var showConfetti = false
     @State private var animationProgress: CGFloat = 0
@@ -204,6 +205,7 @@ struct Step10_AccountStatusView: View {
                 .font(.body)
                 .foregroundColor(.textSecondary)
                 .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 20)
             
             // Status badge
@@ -232,15 +234,19 @@ struct Step10_AccountStatusView: View {
                 Text("Checking status... (attempt \(viewModel.pollAttempts)/\(viewModel.maxPollAttempts))")
                     .font(.caption1)
                     .foregroundColor(.textTertiary)
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             
             // Error message if any
             if let error = viewModel.pollingError {
-                HStack(spacing: 8) {
+                HStack(alignment: .top, spacing: 8) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.caption1)
                     Text(error)
                         .font(.caption1)
+                        .lineLimit(nil)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 .foregroundColor(.errorRed)
                 .padding(.top, 4)
@@ -267,6 +273,7 @@ struct Step10_AccountStatusView: View {
                     .font(.caption1)
                     .foregroundColor(.textSecondary)
                     .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .padding(20)
             .background(Color.backgroundSecondary)
@@ -298,12 +305,15 @@ struct Step10_AccountStatusView: View {
                     Text("Your account is ready!")
                         .font(.calloutMedium)
                         .foregroundColor(.textPrimary)
+                        .lineLimit(nil)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 
                 Text("Complete your risk assessment to get personalized investment recommendations.")
                     .font(.caption1)
                     .foregroundColor(.textSecondary)
                     .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .padding(20)
             .background(Color.successGreen.opacity(0.1))
@@ -319,6 +329,8 @@ struct Step10_AccountStatusView: View {
                     Text("Application not approved")
                         .font(.calloutMedium)
                         .foregroundColor(.textPrimary)
+                        .lineLimit(nil)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 
                 if !viewModel.rejectionReasons.isEmpty {
@@ -330,6 +342,8 @@ struct Step10_AccountStatusView: View {
                                 Text(reason)
                                     .font(.caption1)
                                     .foregroundColor(.textSecondary)
+                                    .lineLimit(nil)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
                         }
                     }
@@ -338,6 +352,7 @@ struct Step10_AccountStatusView: View {
                         .font(.caption1)
                         .foregroundColor(.textSecondary)
                         .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             .padding(20)
@@ -354,6 +369,8 @@ struct Step10_AccountStatusView: View {
                     Text("Additional information needed")
                         .font(.calloutMedium)
                         .foregroundColor(.textPrimary)
+                        .lineLimit(nil)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 
                 if !viewModel.requiredActions.isEmpty {
@@ -367,6 +384,7 @@ struct Step10_AccountStatusView: View {
                         .font(.caption1)
                         .foregroundColor(.textSecondary)
                         .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             .padding(20)
@@ -397,8 +415,8 @@ struct Step10_AccountStatusView: View {
                 }
                 
                 Button(action: {
-                    // Go to dashboard or home
-                    // coordinator.finishRegistration()
+                    // Return to welcome/auth screen
+                    dismiss()
                 }) {
                     Text("Return to Home")
                         .font(.calloutMedium)
@@ -407,13 +425,16 @@ struct Step10_AccountStatusView: View {
                 
             case .approved:
                 ForsaButton("Continue to Risk Assessment", style: .primary, size: .large) {
-                    // Navigate to risk assessment / onboarding
-                    // coordinator.startOnboarding()
+                    // Proceed to risk assessment / onboarding flow
+                    coordinator.proceedToRiskAssessment()
+                    dismiss()
                 }
                 
                 Button(action: {
-                    // Skip to dashboard
-                    // coordinator.skipToMain()
+                    // Skip to dashboard without portfolio selection
+                    // User can select portfolio later from dashboard
+                    coordinator.skipToDashboard()
+                    dismiss()
                 }) {
                     Text("Skip for now")
                         .font(.calloutMedium)
@@ -465,7 +486,7 @@ struct StatusInfoRow: View {
     var isComplete: Bool = false
     
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(alignment: .top, spacing: 12) {
             ZStack {
                 Circle()
                     .fill(isComplete ? Color.successGreen : Color.primaryPurple.opacity(0.1))
@@ -486,8 +507,10 @@ struct StatusInfoRow: View {
                 .font(.callout)
                 .foregroundColor(isComplete ? .textPrimary : .textSecondary)
                 .strikethrough(isComplete, color: .textTertiary)
+                .lineLimit(nil)
+                .fixedSize(horizontal: false, vertical: true)
             
-            Spacer()
+            Spacer(minLength: 0)
         }
     }
 }
@@ -498,27 +521,33 @@ struct RequiredActionRow: View {
     let action: AlpacaAccountCreationResult.RequiredAction
     
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(alignment: .top, spacing: 12) {
             Image(systemName: action.type.icon)
                 .font(.system(size: 16))
                 .foregroundColor(.warningYellow)
                 .frame(width: 24)
+                .padding(.top, 2)
             
             VStack(alignment: .leading, spacing: 2) {
                 Text(action.type.displayName)
                     .font(.caption1Medium)
                     .foregroundColor(.textPrimary)
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
                 
                 Text(action.description)
                     .font(.caption2)
                     .foregroundColor(.textSecondary)
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             
-            Spacer()
+            Spacer(minLength: 8)
             
             Image(systemName: "chevron.right")
                 .font(.caption2)
                 .foregroundColor(.textTertiary)
+                .padding(.top, 4)
         }
         .padding(12)
         .background(Color.backgroundCard)
@@ -553,6 +582,8 @@ struct ConfettiView: View {
     private func createParticles(in size: CGSize) {
         let colors: [Color] = [.primaryPurple, .primaryGreen, .primaryBlue, .warningYellow, .primaryOrange, .errorRed]
         
+        // Create all particles first to avoid race condition
+        var newParticles: [ConfettiParticle] = []
         for _ in 0..<60 {
             let particle = ConfettiParticle(
                 position: CGPoint(x: CGFloat.random(in: 0...size.width), y: -20),
@@ -562,19 +593,25 @@ struct ConfettiView: View {
                     height: CGFloat.random(in: 10...20)
                 ),
                 opacity: 1,
-                rotation: Double.random(in: 0...360)
+                rotation: Double.random(in: 0...360),
+                targetY: size.height + 40,
+                targetXOffset: CGFloat.random(in: -80...80),
+                targetRotation: Double.random(in: 180...720),
+                animationDuration: Double.random(in: 2...4)
             )
-            particles.append(particle)
-            
-            // Animate falling with rotation
-            let index = particles.count - 1
-            let duration = Double.random(in: 2...4)
-            
+            newParticles.append(particle)
+        }
+        
+        particles = newParticles
+        
+        // Animate each particle after all are created
+        for i in particles.indices {
+            let duration = particles[i].animationDuration
             withAnimation(.easeIn(duration: duration)) {
-                particles[index].position.y = size.height + 40
-                particles[index].position.x += CGFloat.random(in: -80...80)
-                particles[index].opacity = 0
-                particles[index].rotation += Double.random(in: 180...720)
+                particles[i].position.y = particles[i].targetY
+                particles[i].position.x += particles[i].targetXOffset
+                particles[i].opacity = 0
+                particles[i].rotation += particles[i].targetRotation
             }
         }
     }
@@ -587,6 +624,10 @@ struct ConfettiParticle: Identifiable {
     let size: CGSize
     var opacity: Double
     var rotation: Double
+    var targetY: CGFloat = 0
+    var targetXOffset: CGFloat = 0
+    var targetRotation: Double = 0
+    var animationDuration: Double = 2
 }
 
 // MARK: - Preview

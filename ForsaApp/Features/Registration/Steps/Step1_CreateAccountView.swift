@@ -11,15 +11,28 @@ import SwiftUI
 struct Step1_CreateAccountView: View {
     @ObservedObject var viewModel: RegistrationViewModel
     @FocusState private var focusedField: Field?
+    @State private var scrollToId: String?
     
     enum Field: Hashable {
         case firstName, lastName, email, password, confirmPassword
+        
+        /// Returns the scroll ID for this field
+        var scrollId: String {
+            switch self {
+            case .firstName: return "field_firstName"
+            case .lastName: return "field_lastName"
+            case .email: return "field_email"
+            case .password: return "field_password"
+            case .confirmPassword: return "field_confirmPassword"
+            }
+        }
     }
     
     var body: some View {
         RegistrationStepContainer(
             buttonTitle: "Continue",
             isButtonDisabled: !isFormValid,
+            scrollToId: $scrollToId,
             onPrimaryTap: {
                 withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
                     viewModel.nextStep()
@@ -42,6 +55,15 @@ struct Step1_CreateAccountView: View {
                 // Validation errors
                 if let errors = viewModel.stepValidationErrors[.basicInfo], !errors.isEmpty {
                     ValidationErrorCard(errors: errors)
+                }
+            }
+        }
+        .onChange(of: focusedField) { _, newField in
+            // Auto-scroll to focused field when keyboard appears
+            if let field = newField {
+                // Small delay to let keyboard appear first
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    scrollToId = field.scrollId
                 }
             }
         }
@@ -99,6 +121,7 @@ struct Step1_CreateAccountView: View {
                     .submitLabel(.next)
                     .onSubmit { focusedField = .lastName }
             }
+            .id(Field.firstName.scrollId)
             
             // Last Name
             VStack(alignment: .leading, spacing: 8) {
@@ -114,6 +137,7 @@ struct Step1_CreateAccountView: View {
                     .submitLabel(.next)
                     .onSubmit { focusedField = .email }
             }
+            .id(Field.lastName.scrollId)
         }
     }
     
@@ -160,6 +184,7 @@ struct Step1_CreateAccountView: View {
                 .foregroundColor(.errorRed)
             }
         }
+        .id(Field.email.scrollId)
     }
     
     // MARK: - Password Fields
@@ -180,7 +205,10 @@ struct Step1_CreateAccountView: View {
                     SecureField("Create a password", text: $viewModel.registrationData.password)
                         .font(.inputText)
                         .foregroundColor(.textPrimary)
-                        .textContentType(.newPassword)
+                        .tint(.primaryPurple)
+                        .textContentType(.oneTimeCode) // Prevents iOS Strong Password autofill yellow overlay
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
                         .focused($focusedField, equals: .password)
                         .submitLabel(.next)
                         .onSubmit { focusedField = .confirmPassword }
@@ -197,6 +225,7 @@ struct Step1_CreateAccountView: View {
                 // Password strength indicator
                 PasswordStrengthIndicator(password: viewModel.registrationData.password)
             }
+            .id(Field.password.scrollId)
             
             // Confirm Password
             VStack(alignment: .leading, spacing: 8) {
@@ -212,7 +241,10 @@ struct Step1_CreateAccountView: View {
                     SecureField("Confirm your password", text: $viewModel.confirmPassword)
                         .font(.inputText)
                         .foregroundColor(.textPrimary)
-                        .textContentType(.newPassword)
+                        .tint(.primaryPurple)
+                        .textContentType(.oneTimeCode) // Prevents iOS Strong Password autofill yellow overlay
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
                         .focused($focusedField, equals: .confirmPassword)
                         .submitLabel(.done)
                     
@@ -241,6 +273,7 @@ struct Step1_CreateAccountView: View {
                     .foregroundColor(.errorRed)
                 }
             }
+            .id(Field.confirmPassword.scrollId)
         }
     }
     

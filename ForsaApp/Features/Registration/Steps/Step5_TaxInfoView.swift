@@ -201,26 +201,21 @@ struct Step5_TaxInfoView: View {
                     .font(.system(.body, design: .monospaced))
                     .foregroundColor(.textPrimary)
                     .keyboardType(.numberPad)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
                     .focused($idFocused)
                     .onAppear {
                         // Start auto-mask timer when field becomes visible
                         resetAutoMaskTimer()
                     }
                 } else {
-                    Text(maskedId)
+                    Text(viewModel.registrationData.taxId.isEmpty 
+                        ? viewModel.registrationData.taxIdType.placeholder 
+                        : maskedId)
                         .font(.system(.body, design: .monospaced))
-                        .foregroundColor(.textPrimary)
+                        .foregroundColor(viewModel.registrationData.taxId.isEmpty ? .textTertiary : .textPrimary)
                     
                     Spacer()
-                    
-                    Button(action: {
-                        showId = true
-                        idFocused = true
-                    }) {
-                        Text("Edit")
-                            .font(.caption1Medium)
-                            .foregroundColor(.primaryPurple)
-                    }
                 }
             }
             .padding(.horizontal, 16)
@@ -231,6 +226,11 @@ struct Step5_TaxInfoView: View {
                 RoundedRectangle(cornerRadius: 12)
                     .stroke(idFocused ? Color.primaryPurple : Color.borderPrimary, lineWidth: idFocused ? 2 : 1)
             )
+            .contentShape(Rectangle())
+            .onTapGesture {
+                showId = true
+                idFocused = true
+            }
             
             // ID validation feedback
             if !viewModel.registrationData.taxId.isEmpty {

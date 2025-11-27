@@ -266,6 +266,7 @@ struct RegistrationStepContainer<Content: View>: View {
     let secondaryButtonTitle: String
     let onPrimaryTap: () -> Void
     let onSecondaryTap: () -> Void
+    @Binding var scrollToId: String?
     
     init(
         buttonTitle: String = "Continue",
@@ -273,6 +274,7 @@ struct RegistrationStepContainer<Content: View>: View {
         isLoading: Bool = false,
         showSecondaryButton: Bool = false,
         secondaryButtonTitle: String = "Skip",
+        scrollToId: Binding<String?> = .constant(nil),
         onPrimaryTap: @escaping () -> Void,
         onSecondaryTap: @escaping () -> Void = {},
         @ViewBuilder content: () -> Content
@@ -283,18 +285,28 @@ struct RegistrationStepContainer<Content: View>: View {
         self.isLoading = isLoading
         self.showSecondaryButton = showSecondaryButton
         self.secondaryButtonTitle = secondaryButtonTitle
+        self._scrollToId = scrollToId
         self.onPrimaryTap = onPrimaryTap
         self.onSecondaryTap = onSecondaryTap
     }
     
     var body: some View {
         VStack(spacing: 0) {
-            // Scrollable content
-            ScrollView(showsIndicators: false) {
-                content
-                    .padding(.horizontal, 24)
-                    .padding(.top, 24)
-                    .padding(.bottom, 120) // Space for fixed buttons
+            // Scrollable content with auto-scroll support
+            ScrollViewReader { proxy in
+                ScrollView(showsIndicators: false) {
+                    content
+                        .padding(.horizontal, 24)
+                        .padding(.top, 24)
+                        .padding(.bottom, 120) // Space for fixed buttons
+                }
+                .onChange(of: scrollToId) { _, newValue in
+                    if let id = newValue {
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            proxy.scrollTo(id, anchor: .center)
+                        }
+                    }
+                }
             }
             
             Spacer(minLength: 0)

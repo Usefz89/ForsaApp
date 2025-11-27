@@ -7,17 +7,43 @@
 
 import SwiftUI
 
-/// Step 6: Financial Profile - Employment, income, net worth, funding sources
+/// Step 6: Financial Profile - Tax ID, Employment, income, net worth, funding sources
 struct Step6_FinancialProfileView: View {
     @ObservedObject var viewModel: RegistrationViewModel
     
     @State private var showEmploymentPicker = false
     @State private var showIncomePicker = false
     @State private var showNetWorthPicker = false
+    @State private var showIdTypePicker = false
+    @State private var showCountryPicker = false
+    @State private var showId = false
     @FocusState private var focusedField: Field?
     
+    /// Timer for auto-masking Civil ID after inactivity
+    @State private var autoMaskTimer: Timer?
+    private let autoMaskDelay: TimeInterval = 2.0
+    
     enum Field: Hashable {
-        case employer, jobTitle
+        case employer, jobTitle, civilId
+    }
+    
+    /// Whether the user is from Kuwait
+    private var isKuwait: Bool {
+        viewModel.registrationData.country == "KWT"
+    }
+    
+    /// The appropriate ID type options based on country
+    private var availableIdTypes: [TaxIdType] {
+        isKuwait ? TaxIdType.kuwaitOptions : TaxIdType.usOptions
+    }
+    
+    /// Expected digit count for current ID type
+    private var expectedDigitCount: Int {
+        switch viewModel.registrationData.taxIdType {
+        case .kuwaitCivilId: return 12
+        case .ssn, .itin: return 9
+        case .foreignPassport, .foreignId: return 5
+        }
     }
     
     var body: some View {
@@ -33,6 +59,9 @@ struct Step6_FinancialProfileView: View {
             VStack(spacing: 28) {
                 // Header
                 financialHeader
+                
+                // Tax ID Section (Civil ID for Kuwait)
+                taxIdSection
                 
                 // Employment Section
                 employmentSection
@@ -72,6 +101,247 @@ struct Step6_FinancialProfileView: View {
                     .multilineTextAlignment(.center)
             }
         }
+    }
+    
+    // MARK: - Tax ID Section
+    
+    private var taxIdSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            RegistrationSectionHeader(
+                isKuwait ? "Identity Verification" : "Tax Information",
+                subtitle: isKuwait ? "Your Civil ID is required for verification" : "Required for tax reporting",
+                icon: "person.text.rectangle.fill"
+            )
+            
+            // ID Type Picker
+            VStack(alignment: .leading, spacing: 8) {
+                Text(isKuwait ? "ID Type" : "Tax ID Type")
+                    .font(.inputLabel)
+                    .foregroundColor(.textPrimary)
+                
+                Button(action: { showIdTypePicker = true }) {
+                    HStack {
+                        Text(viewModel.registrationData.taxIdType.displayName)
+                            .font(.inputText)
+                            .foregroundColor(.textPrimary)
+                        
+                        Spacer()
+                        
+                        Image(systemName: "chevron.down")
+                            .font(.caption)
+                            .foregroundColor(.textTertiary)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
+                    .background(Color.backgroundCard)
+                    .cornerRadius(12)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.borderPrimary, lineWidth: 1)
+                    )
+                }
+            }
+            
+            // ID Input
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text(viewModel.registrationData.taxIdType.displayName)
+                        .font(.inputLabel)
+                        .foregroundColor(.textPrimary)
+                    
+                    Spacer()
+                    
+                    Button(action: { showId.toggle() }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: showId ? "eye.slash.fill" : "eye.fill")
+                                .font(.caption)
+                            Text(showId ? "Hide" : "Show")
+                                .font(.caption)
+                        }
+                        .foregroundColor(.primaryPurple)
+                    }
+                }
+                
+                HStack(spacing: 12) {
+                    Image(systemName: "lock.shield.fill")
+                        .font(.system(size: 18))
+                        .foregroundColor(.primaryPurple)
+                    
+                    if showId {
+                        TextField(viewModel.registrationData.taxIdType.placeholder, text: Binding(
+                            get: { formatIdNumber(viewModel.registrationData.taxId) },
+                            set: { newValue in
+                                let filtered = newValue.filter { $0.isNumber || $0 == "-" }
+                                viewModel.registrationData.taxId = filtered
+                                viewModel.storeSSNSecurely(filtered)
+                                resetAutoMaskTimer()
+                            }
+                        ))
+                        .font(.system(.body, design: .monospaced))
+                        .foregroundColor(.textPrimary)
+                        .keyboardType(.numberPad)
+                        .focused($focusedField, equals: .civilId)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .onAppear { resetAutoMaskTimer() }
+                    } else {
+                        Text(viewModel.registrationData.taxId.isEmpty 
+                            ? viewModel.registrationData.taxIdType.placeholder 
+                            : maskedId)
+                            .font(.system(.body, design: .monospaced))
+                            .foregroundColor(viewModel.registrationData.taxId.isEmpty ? .textTertiary : .textPrimary)
+                        
+                        Spacer()
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
+                .background(Color.backgroundCard)
+                .cornerRadius(12)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(focusedField == .civilId ? Color.primaryPurple : Color.borderPrimary, lineWidth: focusedField == .civilId ? 2 : 1)
+                )
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    showId = true
+                    focusedField = .civilId
+                }
+                
+                // Validation feedback
+                if !viewModel.registrationData.taxId.isEmpty {
+                    let digits = viewModel.registrationData.taxId.filter { $0.isNumber }
+                    if digits.count >= expectedDigitCount {
+                        HStack(spacing: 4) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.caption)
+                            Text("Valid format")
+                                .font(.caption)
+                        }
+                        .foregroundColor(.successGreen)
+                    } else {
+                        let remaining = expectedDigitCount - digits.count
+                        Text("\(remaining) more digit\(remaining == 1 ? "" : "s") needed")
+                            .font(.caption)
+                            .foregroundColor(.textTertiary)
+                    }
+                }
+            }
+            
+            // Tax Residence (for non-Kuwait users or if needed)
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Country of Tax Residence")
+                    .font(.inputLabel)
+                    .foregroundColor(.textPrimary)
+                
+                Button(action: { showCountryPicker = true }) {
+                    HStack {
+                        Text(taxResidenceFlag)
+                            .font(.title3)
+                        
+                        Text(taxResidenceName)
+                            .font(.inputText)
+                            .foregroundColor(.textPrimary)
+                        
+                        Spacer()
+                        
+                        Image(systemName: "chevron.down")
+                            .font(.caption)
+                            .foregroundColor(.textTertiary)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
+                    .background(Color.backgroundCard)
+                    .cornerRadius(12)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.borderPrimary, lineWidth: 1)
+                    )
+                }
+            }
+            
+            // Security notice
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "shield.checkered")
+                    .font(.system(size: 20))
+                    .foregroundColor(.successGreen)
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("256-bit Encryption")
+                        .font(.callout)
+                        .fontWeight(.medium)
+                        .foregroundColor(.textPrimary)
+                    
+                    Text(isKuwait
+                        ? "Your Civil ID is encrypted and never stored in plain text."
+                        : "Your SSN is encrypted and never stored in plain text.")
+                        .font(.caption)
+                        .foregroundColor(.textSecondary)
+                }
+            }
+            .padding(12)
+            .background(Color.successGreen.opacity(0.08))
+            .cornerRadius(12)
+        }
+        .sheet(isPresented: $showIdTypePicker) {
+            TaxIdTypePickerSheet(
+                selectedType: $viewModel.registrationData.taxIdType,
+                availableTypes: availableIdTypes
+            )
+        }
+        .sheet(isPresented: $showCountryPicker) {
+            CountrySelectionSheet(
+                selectedCountryCode: $viewModel.registrationData.countryOfTaxResidence,
+                title: "Tax Residence"
+            )
+        }
+    }
+    
+    // MARK: - Tax ID Helpers
+    
+    private func resetAutoMaskTimer() {
+        autoMaskTimer?.invalidate()
+        autoMaskTimer = Timer.scheduledTimer(withTimeInterval: autoMaskDelay, repeats: false) { _ in
+            withAnimation(.easeOut(duration: 0.2)) {
+                showId = false
+            }
+        }
+    }
+    
+    private func formatIdNumber(_ input: String) -> String {
+        switch viewModel.registrationData.taxIdType {
+        case .ssn, .itin:
+            return viewModel.formatTaxId(input)
+        case .kuwaitCivilId:
+            return input.filter { $0.isNumber }
+        case .foreignPassport, .foreignId:
+            return input
+        }
+    }
+    
+    private var maskedId: String {
+        let taxId = viewModel.registrationData.taxId
+        let digits = taxId.filter { $0.isNumber }
+        
+        switch viewModel.registrationData.taxIdType {
+        case .kuwaitCivilId:
+            if digits.isEmpty { return "••••••••••••" }
+            return "••••••••" + String(digits.suffix(4))
+        case .ssn, .itin:
+            if digits.isEmpty { return "•••-••-••••" }
+            return "•••-••-" + String(digits.suffix(4))
+        case .foreignPassport, .foreignId:
+            if digits.isEmpty { return "••••••••" }
+            return "••••" + String(digits.suffix(4))
+        }
+    }
+    
+    private var taxResidenceFlag: String {
+        Country.common.first { $0.code == viewModel.registrationData.countryOfTaxResidence }?.flag ?? "🇰🇼"
+    }
+    
+    private var taxResidenceName: String {
+        Country.common.first { $0.code == viewModel.registrationData.countryOfTaxResidence }?.name ?? "Kuwait"
     }
     
     // MARK: - Employment Section
@@ -266,12 +536,24 @@ struct Step6_FinancialProfileView: View {
     // MARK: - Computed Properties
     
     private var isFormValid: Bool {
+        // Tax ID validation
+        let digits = viewModel.registrationData.taxId.filter { $0.isNumber }
+        let hasTaxId: Bool
+        switch viewModel.registrationData.taxIdType {
+        case .kuwaitCivilId:
+            hasTaxId = digits.count == 12
+        case .ssn, .itin:
+            hasTaxId = digits.count == 9
+        case .foreignPassport, .foreignId:
+            hasTaxId = digits.count >= 5
+        }
+        
         let hasEmploymentStatus = viewModel.registrationData.employmentStatus != .none
         let hasEmployerInfoIfNeeded = !viewModel.registrationData.employmentStatus.requiresEmployerInfo ||
             (!(viewModel.registrationData.employer?.isEmpty ?? true) && !(viewModel.registrationData.occupation?.isEmpty ?? true))
         let hasFundingSources = !viewModel.registrationData.fundingSources.isEmpty
         
-        return hasEmploymentStatus && hasEmployerInfoIfNeeded && hasFundingSources
+        return hasTaxId && hasEmploymentStatus && hasEmployerInfoIfNeeded && hasFundingSources
     }
 }
 

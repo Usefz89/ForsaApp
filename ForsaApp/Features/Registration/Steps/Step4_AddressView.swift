@@ -113,6 +113,7 @@ struct Step4_AddressView: View {
                     
                     TextField("e.g., Salmiya", text: $viewModel.registrationData.area)
                         .textFieldStyle(ForsaTextFieldStyle(isFocused: focusedField == .area))
+                        .autocorrectionDisabled()
                         .focused($focusedField, equals: .area)
                         .submitLabel(.next)
                         .onSubmit { showGovernoratePicker = true }
@@ -158,6 +159,7 @@ struct Step4_AddressView: View {
                     
                     TextField("e.g., 5", text: $viewModel.registrationData.block)
                         .textFieldStyle(ForsaTextFieldStyle(isFocused: focusedField == .block))
+                        .autocorrectionDisabled()
                         .keyboardType(.numberPad)
                         .focused($focusedField, equals: .block)
                 }
@@ -171,6 +173,7 @@ struct Step4_AddressView: View {
                     
                     TextField("Street name or number", text: $viewModel.registrationData.streetAddress)
                         .textFieldStyle(ForsaTextFieldStyle(isFocused: focusedField == .street))
+                        .autocorrectionDisabled()
                         .focused($focusedField, equals: .street)
                         .submitLabel(.next)
                         .onSubmit { focusedField = .building }
@@ -187,6 +190,7 @@ struct Step4_AddressView: View {
                     
                     TextField("e.g., 12", text: $viewModel.registrationData.building)
                         .textFieldStyle(ForsaTextFieldStyle(isFocused: focusedField == .building))
+                        .autocorrectionDisabled()
                         .focused($focusedField, equals: .building)
                         .submitLabel(.next)
                         .onSubmit { focusedField = .floor }
@@ -208,6 +212,7 @@ struct Step4_AddressView: View {
                         set: { viewModel.registrationData.floor = $0.isEmpty ? nil : $0 }
                     ))
                     .textFieldStyle(ForsaTextFieldStyle(isFocused: focusedField == .floor))
+                    .autocorrectionDisabled()
                     .keyboardType(.numberPad)
                     .focused($focusedField, equals: .floor)
                 }
@@ -229,6 +234,7 @@ struct Step4_AddressView: View {
                         set: { viewModel.registrationData.apartmentUnit = $0.isEmpty ? nil : $0 }
                     ))
                     .textFieldStyle(ForsaTextFieldStyle(isFocused: focusedField == .unit))
+                    .autocorrectionDisabled()
                     .focused($focusedField, equals: .unit)
                 }
                 .frame(width: 80)
@@ -278,6 +284,7 @@ struct Step4_AddressView: View {
                 
                 TextField("123 Main Street", text: $viewModel.registrationData.streetAddress)
                     .textFieldStyle(ForsaTextFieldStyle(isFocused: focusedField == .street))
+                    .autocorrectionDisabled()
                     .textContentType(.streetAddressLine1)
                     .focused($focusedField, equals: .street)
                     .submitLabel(.next)
@@ -301,6 +308,7 @@ struct Step4_AddressView: View {
                     set: { viewModel.registrationData.apartmentUnit = $0.isEmpty ? nil : $0 }
                 ))
                 .textFieldStyle(ForsaTextFieldStyle(isFocused: focusedField == .unit))
+                .autocorrectionDisabled()
                 .textContentType(.streetAddressLine2)
                 .focused($focusedField, equals: .unit)
                 .submitLabel(.next)
@@ -317,6 +325,7 @@ struct Step4_AddressView: View {
                     
                     TextField("City", text: $viewModel.registrationData.city)
                         .textFieldStyle(ForsaTextFieldStyle(isFocused: focusedField == .city))
+                        .autocorrectionDisabled()
                         .textContentType(.addressCity)
                         .focused($focusedField, equals: .city)
                         .submitLabel(.next)
@@ -364,6 +373,7 @@ struct Step4_AddressView: View {
                     
                     TextField("12345", text: $viewModel.registrationData.postalCode)
                         .textFieldStyle(ForsaTextFieldStyle(isFocused: focusedField == .zip))
+                        .autocorrectionDisabled()
                         .keyboardType(.numberPad)
                         .textContentType(.postalCode)
                         .focused($focusedField, equals: .zip)

@@ -54,11 +54,13 @@ struct DashboardView: View {
         .onAppear {
             Task {
                 await viewModel.checkAccountStatus()
-                // Check for uninvested cash and auto-invest if available
-                let didInvest = await coordinator.checkAndAutoInvestAvailableCash()
-                if didInvest {
-                    // Refresh data to show new positions
-                    await viewModel.refreshData()
+                // Only auto-invest if there's actual buying power and no pending orders
+                if viewModel.buyingPower >= 1.0 && !viewModel.hasPendingOrders {
+                    let didInvest = await coordinator.checkAndAutoInvestAvailableCash()
+                    if didInvest {
+                        // Refresh data to show new positions
+                        await viewModel.refreshData()
+                    }
                 }
             }
         }
@@ -81,6 +83,13 @@ struct DashboardView: View {
                 headerView
                 currentPortfolioSection
                 
+                // Show pending orders card if orders are waiting for market
+                if viewModel.hasPendingOrders {
+                    pendingOrdersSection
+                }
+                
+                // Only show invest button if user CAN actually invest
+                // (has buying power, no pending orders, no positions)
                 if viewModel.canInvestNow && coordinator.selectedPortfolio != nil {
                     investNowCard
                 }
@@ -96,11 +105,38 @@ struct DashboardView: View {
         }
         .refreshable {
             await viewModel.refreshData()
-            // Check for uninvested cash and auto-invest after refresh
-            let didInvest = await coordinator.checkAndAutoInvestAvailableCash()
-            if didInvest {
-                // Refresh again to show new positions
-                await viewModel.refreshData()
+            // Only auto-invest if there's actual buying power available
+            if viewModel.buyingPower >= 1.0 && !viewModel.hasPendingOrders {
+                let didInvest = await coordinator.checkAndAutoInvestAvailableCash()
+                if didInvest {
+                    // Refresh again to show new positions
+                    await viewModel.refreshData()
+                }
+            }
+        }
+    }
+    
+    // MARK: - Pending Orders Section
+    
+    private var pendingOrdersSection: some View {
+        PendingOrdersCard(summary: viewModel.pendingOrdersSummary) {
+            // Cancel all orders action
+            Task {
+                await cancelAllPendingOrders()
+            }
+        }
+    }
+    
+    private func cancelAllPendingOrders() async {
+        guard let accountId = viewModel.accountId else { return }
+        
+        do {
+            try await AlpacaTradingService.shared.cancelAllOrders(accountId: accountId)
+            // Refresh data after cancellation
+            await viewModel.refreshData()
+        } catch {
+            await MainActor.run {
+                viewModel.errorMessage = "Failed to cancel orders: \(error.localizedDescription)"
             }
         }
     }
