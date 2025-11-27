@@ -60,6 +60,11 @@ class RegistrationViewModel: ObservableObject {
     @Published var verificationError: String?
     @Published var verificationSid: String?
     
+    /// Verification attempt tracking (BE-3: Expose Twilio attempt count to UI)
+    @Published var verificationAttemptsMade: Int = 0
+    @Published var verificationAttemptsRemaining: Int = TwilioVerifyService.maxVerificationAttempts
+    @Published var maxVerificationAttemptsReached: Bool = false
+    
     /// Session timeout state
     @Published var showSessionTimeoutWarning: Bool = false
     @Published var sessionTimeoutSeconds: Int = 0
@@ -244,6 +249,19 @@ class RegistrationViewModel: ObservableObject {
         rateLimiter.$isOTPRateLimited
             .receive(on: DispatchQueue.main)
             .assign(to: &$isOTPRateLimited)
+        
+        // BE-3: Subscribe to Twilio verification attempt tracking
+        twilioService.$verificationAttempts
+            .receive(on: DispatchQueue.main)
+            .assign(to: &$verificationAttemptsMade)
+        
+        twilioService.$remainingAttempts
+            .receive(on: DispatchQueue.main)
+            .assign(to: &$verificationAttemptsRemaining)
+        
+        twilioService.$maxAttemptsReached
+            .receive(on: DispatchQueue.main)
+            .assign(to: &$maxVerificationAttemptsReached)
     }
     
     private func updateSessionTimeoutStatus() {
@@ -315,7 +333,14 @@ class RegistrationViewModel: ObservableObject {
     
     /// Move to the next step if validation passes
     func nextStep() {
-        guard validateCurrentStep() else { return }
+        guard validateCurrentStep() else {
+            // Provide error feedback when validation fails
+            if let errors = stepValidationErrors[currentStep], !errors.isEmpty {
+                errorMessage = errors.first ?? "Please complete all required fields"
+                showError = true
+            }
+            return
+        }
         
         if let next = currentStep.next {
             withAnimation(.easeInOut(duration: 0.3)) {
@@ -438,16 +463,8 @@ class RegistrationViewModel: ObservableObject {
             errors.append(ageError)
         }
         
-        // Phone number validation using RegistrationValidator
-        let phoneResult = RegistrationValidator.validatePhone(registrationData.phoneNumber)
-        if let phoneError = phoneResult.errorMessage {
-            errors.append(phoneError)
-        }
-        
-        // Phone verification check - must be verified before proceeding
-        if !isPhoneVerified {
-            errors.append("Please verify your phone number")
-        }
+        // Note: Phone validation is handled in validatePhoneVerification() (Step 2)
+        // Personal details step only validates DOB, age, and citizenship
         
         // Citizenship
         if registrationData.citizenship.isEmpty {
@@ -465,34 +482,62 @@ class RegistrationViewModel: ObservableObject {
     private func validateAddress() -> Bool {
         var errors: [String] = []
         
-        // Street address validation using RegistrationValidator
-        let streetResult = RegistrationValidator.validateStreetAddress(registrationData.streetAddress)
-        if let streetError = streetResult.errorMessage {
-            errors.append(streetError)
-        }
+        // Check if user is in Kuwait
+        let isKuwait = registrationData.country == "KWT"
         
-        // City validation using RegistrationValidator
-        let cityResult = RegistrationValidator.validateCity(registrationData.city)
-        if let cityError = cityResult.errorMessage {
-            errors.append(cityError)
-        }
-        
-        // State validation using RegistrationValidator
-        let stateResult = RegistrationValidator.validateState(registrationData.state)
-        if let stateError = stateResult.errorMessage {
-            errors.append(stateError)
-        }
-        
-        // ZIP code validation using RegistrationValidator
-        let zipResult = RegistrationValidator.validateZipCode(registrationData.postalCode, country: registrationData.country)
-        if let zipError = zipResult.errorMessage {
-            errors.append(zipError)
-        } else if registrationData.postalCode.isEmpty {
-            errors.append("Postal code is required")
-        }
-        
-        if registrationData.country.isEmpty {
-            errors.append("Country is required")
+        if isKuwait {
+            // Kuwait-specific address validation
+            if registrationData.block.isEmpty {
+                errors.append("Block number is required")
+            }
+            
+            if registrationData.streetAddress.isEmpty {
+                errors.append("Street is required")
+            }
+            
+            if registrationData.building.isEmpty {
+                errors.append("Building number is required")
+            }
+            
+            if registrationData.area.isEmpty {
+                errors.append("Area is required")
+            }
+            
+            if registrationData.governorate.isEmpty {
+                errors.append("Governorate is required")
+            }
+        } else {
+            // International address validation
+            
+            // Street address validation using RegistrationValidator
+            let streetResult = RegistrationValidator.validateStreetAddress(registrationData.streetAddress)
+            if let streetError = streetResult.errorMessage {
+                errors.append(streetError)
+            }
+            
+            // City validation using RegistrationValidator
+            let cityResult = RegistrationValidator.validateCity(registrationData.city)
+            if let cityError = cityResult.errorMessage {
+                errors.append(cityError)
+            }
+            
+            // State validation using RegistrationValidator
+            let stateResult = RegistrationValidator.validateState(registrationData.state)
+            if let stateError = stateResult.errorMessage {
+                errors.append(stateError)
+            }
+            
+            // ZIP code validation using RegistrationValidator
+            let zipResult = RegistrationValidator.validateZipCode(registrationData.postalCode, country: registrationData.country)
+            if let zipError = zipResult.errorMessage {
+                errors.append(zipError)
+            } else if registrationData.postalCode.isEmpty {
+                errors.append("Postal code is required")
+            }
+            
+            if registrationData.country.isEmpty {
+                errors.append("Country is required")
+            }
         }
         
         if !errors.isEmpty {
@@ -748,6 +793,8 @@ class RegistrationViewModel: ObservableObject {
     }
     
     /// Verify the OTP code entered by user
+    /// Uses retry wrapper for network resilience (BE-2)
+    /// Logs failed attempts for security auditing (BE-1)
     /// - Parameter code: 6-digit verification code
     /// - Returns: True if verification successful
     @discardableResult
@@ -756,6 +803,7 @@ class RegistrationViewModel: ObservableObject {
         let cleanCode = code.filter { $0.isNumber }
         guard cleanCode.count == 6 else {
             verificationError = "Please enter a 6-digit verification code"
+            logVerificationAttempt(success: false, reason: "Invalid code format")
             return false
         }
         
@@ -763,25 +811,37 @@ class RegistrationViewModel: ObservableObject {
         isVerifyingOTP = true
         verificationError = nil
         
+        // Ensure loading state is reset when function exits
+        defer { isVerifyingOTP = false }
+        
         do {
-            // Verify OTP via Twilio
-            let success = try await twilioService.verifyOTP(
+            // BE-2: Use verifyOTPWithRetry for network resilience
+            let success = try await twilioService.verifyOTPWithRetry(
                 phoneNumber: registrationData.phoneNumber,
-                code: cleanCode
+                code: cleanCode,
+                maxAttempts: 2  // Network retries, not code retries
             )
             
             if success {
                 isPhoneVerified = true
                 verificationError = nil
+                logVerificationAttempt(success: true, reason: nil)
                 print("✅ Phone verified successfully!")
                 return true
             } else {
                 verificationError = "Verification failed. Please try again."
+                logVerificationAttempt(success: false, reason: "Verification returned false")
                 return false
             }
             
         } catch let error as TwilioVerifyError {
             verificationError = error.localizedDescription
+            
+            // BE-1: Log failed verification attempt for security auditing
+            logVerificationAttempt(
+                success: false,
+                reason: error.localizedDescription
+            )
             
             // If should request new code, reset OTP state
             if error.shouldRequestNewCode {
@@ -794,8 +854,58 @@ class RegistrationViewModel: ObservableObject {
             
         } catch {
             verificationError = "Verification failed. Please try again."
+            logVerificationAttempt(success: false, reason: error.localizedDescription)
             print("❌ Unexpected error verifying OTP: \(error)")
             return false
+        }
+    }
+    
+    // MARK: - Security Audit Logging (BE-1)
+    
+    /// Logs verification attempts for security auditing
+    /// Important for detecting fraud and compliance reporting
+    /// - Parameters:
+    ///   - success: Whether the verification was successful
+    ///   - reason: Reason for failure (if applicable)
+    private func logVerificationAttempt(success: Bool, reason: String?) {
+        let maskedPhone = maskPhone(registrationData.phoneNumber)
+        let timestamp = ISO8601DateFormatter().string(from: Date())
+        let attemptNumber = verificationAttemptsMade
+        let remaining = verificationAttemptsRemaining
+        
+        var logEntry = """
+        🔐 SECURITY AUDIT - Phone Verification Attempt
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        Timestamp: \(timestamp)
+        Phone: \(maskedPhone)
+        Attempt #: \(attemptNumber)
+        Remaining: \(remaining)
+        Result: \(success ? "✅ SUCCESS" : "❌ FAILED")
+        """
+        
+        if let reason = reason {
+            logEntry += "\nReason: \(reason)"
+        }
+        
+        logEntry += "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        
+        print(logEntry)
+        
+        // In production, this would also:
+        // 1. Send to analytics/logging service (e.g., Firebase Analytics, Amplitude)
+        // 2. Store locally for compliance auditing
+        // 3. Trigger alerts for suspicious patterns (e.g., via backend webhook)
+        
+        // Detect suspicious patterns - multiple failed attempts
+        if !success && attemptNumber >= 3 {
+            print("⚠️ SECURITY ALERT: Multiple failed verification attempts for \(maskedPhone)")
+            // In production: trigger security alert to backend
+        }
+        
+        // Detect lockout condition
+        if remaining == 0 {
+            print("🚨 SECURITY ALERT: Max verification attempts reached for \(maskedPhone)")
+            // In production: log to fraud detection system
         }
     }
     
@@ -1101,13 +1211,46 @@ class RegistrationViewModel: ObservableObject {
     
     private func createAlpacaAccount() async throws -> String {
         // Build Alpaca request from registration data
+        // Handle Kuwait-specific address mapping
+        let isKuwait = registrationData.country == "KWT"
+        
+        // For Kuwait: map area → city, governorate → state
+        let cityValue = isKuwait ? registrationData.area : registrationData.city
+        let stateValue = isKuwait ? registrationData.governorate : registrationData.state
+        // Kuwait doesn't use postal codes, use "00000" as placeholder
+        let postalCodeValue = isKuwait ? "00000" : registrationData.postalCode
+        
+        // Build full street address for Kuwait (Block X, Building Y, Street Z)
+        let streetAddress: [String]
+        if isKuwait {
+            var addressParts: [String] = []
+            if !registrationData.block.isEmpty {
+                addressParts.append("Block \(registrationData.block)")
+            }
+            if !registrationData.building.isEmpty {
+                addressParts.append("Building \(registrationData.building)")
+            }
+            if !registrationData.streetAddress.isEmpty {
+                addressParts.append(registrationData.streetAddress)
+            }
+            if let floor = registrationData.floor, !floor.isEmpty {
+                addressParts.append("Floor \(floor)")
+            }
+            if let apt = registrationData.apartmentUnit, !apt.isEmpty {
+                addressParts.append("Apt \(apt)")
+            }
+            streetAddress = [addressParts.joined(separator: ", ")]
+        } else {
+            streetAddress = registrationData.fullStreetAddress
+        }
+        
         let contact = AlpacaContact(
             email_address: registrationData.email,
             phone_number: registrationData.phoneNumber.filter { $0.isNumber },
-            street_address: registrationData.fullStreetAddress,
-            city: registrationData.city,
-            state: registrationData.state,
-            postal_code: registrationData.postalCode,
+            street_address: streetAddress,
+            city: cityValue,
+            state: stateValue,
+            postal_code: postalCodeValue,
             country: registrationData.country
         )
         
@@ -1494,6 +1637,125 @@ extension RegistrationViewModel {
     /// Get errors for a specific step
     func errors(for step: RegistrationStep) -> [String] {
         stepValidationErrors[step] ?? []
+    }
+    
+    // MARK: - Public Validation Methods for Views
+    
+    /// Validates personal details step and returns error messages
+    /// Used by Step3_PersonalInfoView for inline validation
+    func validatePersonalDetailsStep() -> [String] {
+        var errors: [String] = []
+        
+        // Date of birth validation
+        if registrationData.dateOfBirth == nil {
+            errors.append("Please select your date of birth")
+        } else if let dob = registrationData.dateOfBirth {
+            let calendar = Calendar.current
+            let ageComponents = calendar.dateComponents([.year], from: dob, to: Date())
+            let age = ageComponents.year ?? 0
+            
+            if age < 18 {
+                errors.append("You must be at least 18 years old to open an account")
+            }
+        }
+        
+        // Citizenship validation
+        if registrationData.citizenship.isEmpty {
+            errors.append("Please select your country of citizenship")
+        }
+        
+        // Store errors for other components to access
+        if !errors.isEmpty {
+            stepValidationErrors[.personalDetails] = errors
+        } else {
+            stepValidationErrors[.personalDetails] = nil
+        }
+        
+        return errors
+    }
+    
+    /// Validates address step and returns error messages
+    /// Used by Step4_AddressView for inline validation
+    func validateAddressStep() -> [String] {
+        var errors: [String] = []
+        
+        // Check if user is in Kuwait
+        let isKuwait = registrationData.country == "KWT"
+        
+        if isKuwait {
+            // Kuwait-specific validation
+            if registrationData.block.isEmpty {
+                errors.append("Please enter your block number")
+            }
+            
+            if registrationData.streetAddress.isEmpty {
+                errors.append("Please enter your street")
+            }
+            
+            if registrationData.building.isEmpty {
+                errors.append("Please enter your building number")
+            }
+            
+            if registrationData.area.isEmpty {
+                errors.append("Please enter your area")
+            }
+            
+            if registrationData.governorate.isEmpty {
+                errors.append("Please select your governorate")
+            }
+        } else {
+            // International address validation
+            if registrationData.streetAddress.isEmpty {
+                errors.append("Please enter your street address")
+            }
+            
+            if registrationData.city.isEmpty {
+                errors.append("Please enter your city")
+            }
+            
+            // State is required for US users
+            if registrationData.country == "USA" && registrationData.state.isEmpty {
+                errors.append("Please select your state")
+            }
+            
+            if registrationData.postalCode.isEmpty {
+                errors.append("Please enter your postal code")
+            }
+        }
+        
+        if !errors.isEmpty {
+            stepValidationErrors[.address] = errors
+        } else {
+            stepValidationErrors[.address] = nil
+        }
+        
+        return errors
+    }
+    
+    /// Validates tax/financial info step and returns error messages
+    func validateTaxFinancialStep() -> [String] {
+        var errors: [String] = []
+        
+        if registrationData.taxId.isEmpty {
+            let taxIdLabel = registrationData.taxIdType == .kuwaitCivilId ? "Civil ID" : "SSN/Tax ID"
+            errors.append("Please enter your \(taxIdLabel)")
+        }
+        
+        if registrationData.fundingSources.isEmpty {
+            errors.append("Please select at least one source of funds")
+        }
+        
+        if registrationData.employmentStatus == .none {
+            errors.append("Please select your employment status")
+        }
+        
+        if !errors.isEmpty {
+            stepValidationErrors[.taxFinancial] = errors
+        } else {
+            stepValidationErrors[.taxFinancial] = nil
+        }
+        
+        return errors
     }
 }
 

@@ -256,7 +256,7 @@ struct RegistrationValidator {
         return .valid
     }
     
-    /// Validates Kuwait Civil ID (الرقم المدني)
+    /// Validates Kuwait Civil ID (12-digit national ID)
     /// Kuwait Civil ID is a 12-digit number where:
     /// - First digit indicates century/nationality: 1=born 1900s, 2=born 2000s, 3=non-citizen
     /// - Next 6 digits: date of birth (YYMMDD)

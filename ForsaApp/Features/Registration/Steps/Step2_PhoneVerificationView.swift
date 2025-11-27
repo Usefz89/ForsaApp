@@ -12,7 +12,7 @@ struct Step2_PhoneVerificationView: View {
     @ObservedObject var viewModel: RegistrationViewModel
     
     @State private var showCountryPicker = false
-    @State private var selectedCountry = Country.usa
+    @State private var selectedCountry = Country.kuwait
     @State private var otpCode = ""
     @State private var resendTimer = 60
     @State private var canResend = true
@@ -23,6 +23,10 @@ struct Step2_PhoneVerificationView: View {
     // Rate limit countdown state
     @State private var rateLimitCountdown: Int = 0
     @State private var isShowingRateLimitBanner = false
+    
+    // Shake animation state for wrong OTP
+    @State private var shakeOffset: CGFloat = 0
+    @State private var isShaking = false
     
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     
@@ -138,7 +142,21 @@ struct Step2_PhoneVerificationView: View {
     private func handlePrimaryAction() async {
         if viewModel.otpSent {
             // Verify OTP
-            await viewModel.verifyOTP(code: otpCode)
+            let success = await viewModel.verifyOTP(code: otpCode)
+            
+            if !success {
+                // VAL-2: Trigger shake animation on wrong code
+                triggerShakeAnimation()
+                
+                // VAL-1: Clear code after failed attempt (with slight delay for visual feedback)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        otpCode = ""
+                    }
+                    // Re-focus the input for immediate retry
+                    otpFocused = true
+                }
+            }
         } else {
             // Send OTP
             await viewModel.sendOTP(channel: selectedChannel)
@@ -147,6 +165,45 @@ struct Step2_PhoneVerificationView: View {
                 canResend = false
             }
         }
+    }
+    
+    /// Triggers a shake animation on the OTP input (common UX pattern for wrong input)
+    private func triggerShakeAnimation() {
+        isShaking = true
+        
+        // Create shake effect using offset animation
+        withAnimation(.interpolatingSpring(stiffness: 600, damping: 10)) {
+            shakeOffset = 10
+        }
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            withAnimation(.interpolatingSpring(stiffness: 600, damping: 10)) {
+                shakeOffset = -8
+            }
+        }
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            withAnimation(.interpolatingSpring(stiffness: 600, damping: 10)) {
+                shakeOffset = 6
+            }
+        }
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            withAnimation(.interpolatingSpring(stiffness: 600, damping: 10)) {
+                shakeOffset = -4
+            }
+        }
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            withAnimation(.interpolatingSpring(stiffness: 600, damping: 10)) {
+                shakeOffset = 0
+            }
+            isShaking = false
+        }
+        
+        // Haptic feedback for tactile response
+        let generator = UINotificationFeedbackGenerator()
+        generator.notificationOccurred(.error)
     }
     
     // MARK: - Error Banner
@@ -248,7 +305,7 @@ struct Step2_PhoneVerificationView: View {
                         Text(selectedCountry.flag)
                             .font(.title3)
                         
-                        Text("+1")
+                        Text(selectedCountry.dialCode)
                             .font(.bodyMedium)
                             .foregroundColor(.textPrimary)
                         
@@ -263,9 +320,9 @@ struct Step2_PhoneVerificationView: View {
                 }
                 
                 // Phone number input
-                TextField("(555) 123-4567", text: Binding(
-                    get: { viewModel.formatPhoneNumber(viewModel.registrationData.phoneNumber) },
-                    set: { viewModel.registrationData.phoneNumber = $0 }
+                TextField(phonePlaceholder, text: Binding(
+                    get: { viewModel.registrationData.phoneNumber },
+                    set: { viewModel.registrationData.phoneNumber = $0.filter { $0.isNumber } }
                 ))
                 .font(.inputText)
                 .foregroundColor(.textPrimary)
@@ -281,7 +338,7 @@ struct Step2_PhoneVerificationView: View {
                 )
             }
             
-            Text("We'll send a text message to verify this number")
+            Text("We'll send a verification code to this number")
                 .font(.caption1)
                 .foregroundColor(.textTertiary)
         }
@@ -291,16 +348,20 @@ struct Step2_PhoneVerificationView: View {
     
     private var otpInputSection: some View {
         VStack(spacing: 24) {
-            // OTP Input boxes
+            // OTP Input boxes with shake animation
             HStack(spacing: 8) {
                 ForEach(0..<6, id: \.self) { index in
                     OTPDigitBox(
                         digit: getDigit(at: index),
                         isFocused: otpCode.count == index && otpFocused,
-                        hasError: viewModel.verificationError != nil && otpCode.count == 6
+                        // UI-4 FIX: Only show error state when we have a full code AND error AND not shaking
+                        // The shake animation handles the visual feedback, then we clear
+                        hasError: viewModel.verificationError != nil && otpCode.count == 6 && !isShaking,
+                        isShaking: isShaking
                     )
                 }
             }
+            .offset(x: shakeOffset) // Apply shake animation offset
             .onTapGesture {
                 otpFocused = true
             }
@@ -312,9 +373,10 @@ struct Step2_PhoneVerificationView: View {
                 .focused($otpFocused)
                 .opacity(0)
                 .frame(width: 0, height: 0)
-                .onChange(of: otpCode) { _, newValue in
-                    // Clear error when user types
-                    if viewModel.verificationError != nil {
+                .onChange(of: otpCode) { oldValue, newValue in
+                    // UI-2 FIX: Only clear error when user starts fresh (going from 6 to fewer digits)
+                    // This prevents error from disappearing too quickly on first keystroke
+                    if viewModel.verificationError != nil && oldValue.count == 6 && newValue.count < 6 {
                         viewModel.verificationError = nil
                     }
                     
@@ -328,6 +390,11 @@ struct Step2_PhoneVerificationView: View {
                         otpCode = filtered
                     }
                 }
+            
+            // UI-1: Remaining attempts indicator
+            if viewModel.otpRemainingAttempts < 3 && viewModel.otpRemainingAttempts > 0 {
+                remainingAttemptsIndicator
+            }
             
             // Resend code section
             resendCodeSection
@@ -351,6 +418,28 @@ struct Step2_PhoneVerificationView: View {
         .onAppear {
             otpFocused = true
         }
+    }
+    
+    // MARK: - Remaining Attempts Indicator (UI-1)
+    
+    private var remainingAttemptsIndicator: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.circle.fill")
+                .font(.system(size: 14))
+                .foregroundColor(.warningOrange)
+            
+            Text("\(viewModel.otpRemainingAttempts) attempt\(viewModel.otpRemainingAttempts == 1 ? "" : "s") remaining")
+                .font(.caption)
+                .fontWeight(.medium)
+                .foregroundColor(.warningOrange)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.warningOrange.opacity(0.1))
+        )
+        .transition(.scale.combined(with: .opacity))
     }
     
     // MARK: - Resend Code Section
@@ -533,12 +622,22 @@ struct Step2_PhoneVerificationView: View {
     
     private var isPhoneValid: Bool {
         let digits = viewModel.registrationData.phoneNumber.filter { $0.isNumber }
-        return digits.count >= 10
+        // Kuwait numbers are 8 digits, US numbers are 10 digits
+        let requiredDigits = selectedCountry.isKuwait ? 8 : 10
+        return digits.count >= requiredDigits
     }
     
     private var formattedPhone: String {
-        let formatted = viewModel.formatPhoneNumber(viewModel.registrationData.phoneNumber)
-        return "+1 \(formatted)"
+        let phoneNumber = viewModel.registrationData.phoneNumber
+        return "\(selectedCountry.dialCode) \(phoneNumber)"
+    }
+    
+    private var phonePlaceholder: String {
+        if selectedCountry.isKuwait {
+            return "9XXXXXXX"  // Kuwait mobile format
+        } else {
+            return "5551234567"  // Generic format
+        }
     }
     
     private func getDigit(at index: Int) -> String {
@@ -554,9 +653,10 @@ struct OTPDigitBox: View {
     let digit: String
     let isFocused: Bool
     var hasError: Bool = false
+    var isShaking: Bool = false
     
     private var borderColor: Color {
-        if hasError {
+        if hasError || isShaking {
             return .errorRed
         } else if isFocused {
             return .primaryPurple
@@ -568,13 +668,21 @@ struct OTPDigitBox: View {
     }
     
     private var borderWidth: CGFloat {
-        isFocused || hasError ? 2 : 1
+        (isFocused || hasError || isShaking) ? 2 : 1
+    }
+    
+    private var backgroundColor: Color {
+        if hasError || isShaking {
+            return Color.errorRed.opacity(0.05)
+        } else {
+            return Color.backgroundCard
+        }
     }
     
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 12)
-                .fill(Color.backgroundCard)
+                .fill(backgroundColor)
             
             RoundedRectangle(cornerRadius: 12)
                 .stroke(borderColor, lineWidth: borderWidth)
@@ -582,13 +690,14 @@ struct OTPDigitBox: View {
             Text(digit)
                 .font(.title2)
                 .fontWeight(.bold)
-                .foregroundColor(hasError ? .errorRed : .textPrimary)
+                .foregroundColor((hasError || isShaking) ? .errorRed : .textPrimary)
         }
         .frame(width: 48, height: 56)
         .animation(.easeInOut(duration: 0.15), value: isFocused)
         .animation(.easeInOut(duration: 0.15), value: digit)
         .animation(.easeInOut(duration: 0.15), value: hasError)
-        .scaleEffect(hasError ? 1.02 : 1.0)
+        .animation(.easeInOut(duration: 0.15), value: isShaking)
+        .scaleEffect((hasError || isShaking) ? 1.02 : 1.0)
     }
 }
 

@@ -27,6 +27,23 @@ final class TwilioVerifyService: ObservableObject {
     @Published private(set) var verificationSid: String?
     @Published private(set) var isVerified = false
     
+    // MARK: - Attempt Tracking State
+    
+    /// Maximum verification attempts allowed by Twilio per session
+    static let maxVerificationAttempts = 5
+    
+    /// Current number of verification attempts made in this session
+    @Published private(set) var verificationAttempts: Int = 0
+    
+    /// Remaining verification attempts before session is locked
+    @Published private(set) var remainingAttempts: Int = maxVerificationAttempts
+    
+    /// Whether max attempts have been reached and a new OTP is required
+    @Published private(set) var maxAttemptsReached: Bool = false
+    
+    /// Phone number for the current verification session
+    @Published private(set) var currentPhoneNumber: String?
+    
     // MARK: - Configuration
     
     private var accountSid: String { AppConfig.Twilio.accountSid }
@@ -91,6 +108,11 @@ final class TwilioVerifyService: ObservableObject {
                 
                 print("✅ OTP sent successfully. SID: \(sid.prefix(10))...")
                 self.verificationSid = sid
+                
+                // Reset attempt tracking for new verification session
+                resetAttemptTracking()
+                self.currentPhoneNumber = formattedPhone
+                
                 return sid
                 
             } else {
@@ -120,6 +142,13 @@ final class TwilioVerifyService: ObservableObject {
     ///   - code: 6-digit OTP code
     /// - Returns: True if verification successful
     func verifyOTP(phoneNumber: String, code: String) async throws -> Bool {
+        // Check if max attempts already reached before making API call
+        guard !maxAttemptsReached else {
+            let error = TwilioVerifyError.maxAttemptsReached
+            lastError = error
+            throw error
+        }
+        
         isLoading = true
         lastError = nil
         
@@ -150,7 +179,7 @@ final class TwilioVerifyService: ObservableObject {
         ]
         request.httpBody = bodyParams.percentEncoded()
         
-        print("🔐 Verifying OTP for: \(maskPhoneNumber(formattedPhone))")
+        print("🔐 Verifying OTP for: \(maskPhoneNumber(formattedPhone)) (Attempt \(verificationAttempts + 1)/\(Self.maxVerificationAttempts))")
         
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
@@ -167,12 +196,27 @@ final class TwilioVerifyService: ObservableObject {
                 if status == "approved" {
                     print("✅ Phone number verified successfully!")
                     isVerified = true
+                    // Reset on success
+                    resetAttemptTracking()
                     return true
+                    
                 } else if status == "pending" {
-                    // Code was incorrect but verification is still active
+                    // Code was incorrect - increment attempt counter
+                    incrementAttemptCount()
+                    
+                    // Check if this was the last attempt
+                    if maxAttemptsReached {
+                        let error = TwilioVerifyError.maxAttemptsReached
+                        lastError = error
+                        print("❌ Max verification attempts reached. User must request new code.")
+                        throw error
+                    }
+                    
                     let error = TwilioVerifyError.incorrectCode
                     lastError = error
+                    print("⚠️ Incorrect code. \(remainingAttempts) attempts remaining.")
                     throw error
+                    
                 } else {
                     // Verification failed or expired
                     let error = TwilioVerifyError.verificationFailed(status ?? "unknown")
@@ -183,6 +227,11 @@ final class TwilioVerifyService: ObservableObject {
             } else {
                 let errorCode = json?["code"] as? Int
                 let errorMessage = json?["message"] as? String ?? "Verification failed"
+                
+                // Check for max attempts error from Twilio (60203)
+                if errorCode == 60203 {
+                    handleMaxAttemptsReached()
+                }
                 
                 let error = mapTwilioError(code: errorCode, message: errorMessage, statusCode: httpResponse.statusCode)
                 lastError = error
@@ -196,6 +245,47 @@ final class TwilioVerifyService: ObservableObject {
             lastError = twilioError
             throw twilioError
         }
+    }
+    
+    // MARK: - Attempt Tracking Methods
+    
+    /// Resets the verification attempt tracking for a new session
+    private func resetAttemptTracking() {
+        verificationAttempts = 0
+        remainingAttempts = Self.maxVerificationAttempts
+        maxAttemptsReached = false
+        print("🔄 Verification attempt counter reset")
+    }
+    
+    /// Increments the attempt counter and updates remaining attempts
+    private func incrementAttemptCount() {
+        verificationAttempts += 1
+        remainingAttempts = max(0, Self.maxVerificationAttempts - verificationAttempts)
+        
+        if verificationAttempts >= Self.maxVerificationAttempts {
+            maxAttemptsReached = true
+        }
+    }
+    
+    /// Handles when Twilio reports max attempts reached (code 60203)
+    private func handleMaxAttemptsReached() {
+        verificationAttempts = Self.maxVerificationAttempts
+        remainingAttempts = 0
+        maxAttemptsReached = true
+        print("🚫 Twilio reported max verification attempts reached")
+    }
+    
+    /// Returns formatted string of remaining attempts for UI display
+    var attemptsRemainingText: String {
+        if maxAttemptsReached {
+            return "No attempts remaining. Please request a new code."
+        }
+        return "\(remainingAttempts) attempt\(remainingAttempts == 1 ? "" : "s") remaining"
+    }
+    
+    /// Returns true if user should be warned they're running low on attempts
+    var isRunningLowOnAttempts: Bool {
+        remainingAttempts <= 2 && remainingAttempts > 0
     }
     
     // MARK: - Retry Methods
@@ -295,6 +385,10 @@ final class TwilioVerifyService: ObservableObject {
         isVerified = false
         lastError = nil
         isLoading = false
+        currentPhoneNumber = nil
+        
+        // Reset attempt tracking
+        resetAttemptTracking()
     }
     
     // MARK: - Private Helpers
@@ -403,20 +497,36 @@ final class TwilioVerifyService: ObservableObject {
     
     /// Maps Twilio error codes to local error types
     private func mapTwilioError(code: Int?, message: String, statusCode: Int) -> TwilioVerifyError {
-        // Twilio specific error codes
+        // Twilio Verify specific error codes
+        // Reference: https://www.twilio.com/docs/verify/api/verification-check#check-a-verification-errors
         switch code {
+        // General errors
         case 20404:
             return .verificationNotFound
         case 20429:
             return .rateLimitExceeded
+            
+        // Verification errors (60xxx)
         case 60200:
             return .invalidPhoneNumber
         case 60202:
-            return .maxAttemptsReached
-        case 60203:
+            // Max SEND attempts reached - can't send more OTPs to this number
             return .maxSendAttemptsReached
+        case 60203:
+            // Max CHECK attempts reached - too many wrong codes entered
+            // User must request a new verification code
+            handleMaxAttemptsReached()
+            return .maxAttemptsReached
         case 60212:
-            return .incorrectCode
+            // Too many concurrent requests for this phone number
+            return .rateLimitExceeded
+        case 60223:
+            // Verification expired
+            return .verificationExpired
+        case 60410:
+            // Verification delivery attempt blocked (carrier/spam filter)
+            return .deliveryBlocked
+            
         default:
             break
         }
@@ -475,14 +585,15 @@ enum TwilioVerifyError: Error, LocalizedError, Equatable {
     case verificationNotFound
     case verificationExpired
     case verificationFailed(String)
-    case maxAttemptsReached
-    case maxSendAttemptsReached
+    case maxAttemptsReached          // Too many wrong codes - must request new OTP
+    case maxSendAttemptsReached      // Too many OTP requests to this number
     case rateLimitExceeded
     case authenticationFailed
     case permissionDenied
     case serverError
     case networkError(String)
     case invalidResponse
+    case deliveryBlocked             // Carrier/spam filter blocked delivery
     case unknownError(String)
     
     var errorDescription: String? {
@@ -515,6 +626,8 @@ enum TwilioVerifyError: Error, LocalizedError, Equatable {
             return "Network error: \(message)"
         case .invalidResponse:
             return "Invalid response from verification service"
+        case .deliveryBlocked:
+            return "Verification code could not be delivered. Your carrier may have blocked it. Please try a different phone number or use voice call instead."
         case .unknownError(let message):
             return message
         }
@@ -527,6 +640,17 @@ enum TwilioVerifyError: Error, LocalizedError, Equatable {
             return true
         default:
             return false
+        }
+    }
+    
+    /// Number of remaining attempts, if known from the error
+    /// Returns nil if not applicable
+    var remainingAttemptsFromError: Int? {
+        switch self {
+        case .maxAttemptsReached:
+            return 0
+        default:
+            return nil
         }
     }
     

@@ -24,12 +24,27 @@ struct ForsaButton: View {
         self.isLoading = isLoading
     }
 
+    // Computed colors based on disabled state
+    private var currentBackgroundColor: Color {
+        if isDisabled {
+            return Color.backgroundTertiary
+        }
+        return style.backgroundColor
+    }
+    
+    private var currentTextColor: Color {
+        if isDisabled {
+            return Color.textTertiary
+        }
+        return style.textColor
+    }
+    
     var body: some View {
         Button(action: action) {
             HStack(spacing: 8) {
                 if isLoading {
                     ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: style.textColor))
+                        .progressViewStyle(CircularProgressViewStyle(tint: currentTextColor))
                         .scaleEffect(0.8)
                 } else {
                     Text(title)
@@ -37,18 +52,17 @@ struct ForsaButton: View {
                         .fontWeight(.semibold)
                 }
             }
-            .foregroundColor(style.textColor)
+            .foregroundColor(currentTextColor)
             .frame(maxWidth: .infinity)
             .frame(height: size.height)
-            .background(style.backgroundColor)
+            .background(currentBackgroundColor)
             .cornerRadius(size.cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: size.cornerRadius)
-                    .stroke(style.borderColor, lineWidth: style.borderWidth)
+                    .stroke(isDisabled ? Color.borderPrimary : style.borderColor, lineWidth: style.borderWidth)
             )
         }
         .disabled(isDisabled || isLoading)
-        .opacity(isDisabled ? 0.6 : 1.0)
         .animation(.easeInOut(duration: 0.2), value: isDisabled)
         .animation(.easeInOut(duration: 0.2), value: isLoading)
     }
@@ -156,22 +170,30 @@ struct ForsaIconButton: View {
         self.action = action
         self.isDisabled = isDisabled
     }
+    
+    private var currentBackgroundColor: Color {
+        isDisabled ? Color.backgroundTertiary : style.backgroundColor
+    }
+    
+    private var currentIconColor: Color {
+        isDisabled ? Color.textTertiary : style.textColor
+    }
 
     var body: some View {
         Button(action: action) {
             Image(systemName: icon)
                 .font(.system(size: iconSize, weight: .medium))
-                .foregroundColor(style.textColor)
+                .foregroundColor(currentIconColor)
                 .frame(width: size.height, height: size.height)
-                .background(style.backgroundColor)
+                .background(currentBackgroundColor)
                 .cornerRadius(size.cornerRadius)
                 .overlay(
                     RoundedRectangle(cornerRadius: size.cornerRadius)
-                        .stroke(style.borderColor, lineWidth: style.borderWidth)
+                        .stroke(isDisabled ? Color.borderPrimary : style.borderColor, lineWidth: style.borderWidth)
                 )
         }
         .disabled(isDisabled)
-        .opacity(isDisabled ? 0.6 : 1.0)
+        .animation(.easeInOut(duration: 0.2), value: isDisabled)
     }
 
     private var iconSize: CGFloat {

@@ -105,16 +105,11 @@ struct Step4_AddressView: View {
         VStack(spacing: 16) {
             // Area and Governorate Row
             HStack(spacing: 12) {
-                // Area (المنطقة)
+                // Area
                 VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 4) {
-                        Text("Area")
-                            .font(.inputLabel)
-                            .foregroundColor(.textPrimary)
-                        Text("المنطقة")
-                            .font(.caption)
-                            .foregroundColor(.textTertiary)
-                    }
+                    Text("Area")
+                        .font(.inputLabel)
+                        .foregroundColor(.textPrimary)
                     
                     TextField("e.g., Salmiya", text: $viewModel.registrationData.area)
                         .textFieldStyle(ForsaTextFieldStyle(isFocused: focusedField == .area))
@@ -123,16 +118,11 @@ struct Step4_AddressView: View {
                         .onSubmit { showGovernoratePicker = true }
                 }
                 
-                // Governorate (المحافظة)
+                // Governorate
                 VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 4) {
-                        Text("Governorate")
-                            .font(.inputLabel)
-                            .foregroundColor(.textPrimary)
-                        Text("المحافظة")
-                            .font(.caption)
-                            .foregroundColor(.textTertiary)
-                    }
+                    Text("Governorate")
+                        .font(.inputLabel)
+                        .foregroundColor(.textPrimary)
                     
                     Button(action: { showGovernoratePicker = true }) {
                         HStack {
@@ -160,16 +150,11 @@ struct Step4_AddressView: View {
             
             // Block and Street Row
             HStack(spacing: 12) {
-                // Block (القطعة)
+                // Block
                 VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 4) {
-                        Text("Block")
-                            .font(.inputLabel)
-                            .foregroundColor(.textPrimary)
-                        Text("القطعة")
-                            .font(.caption)
-                            .foregroundColor(.textTertiary)
-                    }
+                    Text("Block")
+                        .font(.inputLabel)
+                        .foregroundColor(.textPrimary)
                     
                     TextField("e.g., 5", text: $viewModel.registrationData.block)
                         .textFieldStyle(ForsaTextFieldStyle(isFocused: focusedField == .block))
@@ -178,16 +163,11 @@ struct Step4_AddressView: View {
                 }
                 .frame(width: 100)
                 
-                // Street (الشارع)
+                // Street
                 VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 4) {
-                        Text("Street")
-                            .font(.inputLabel)
-                            .foregroundColor(.textPrimary)
-                        Text("الشارع")
-                            .font(.caption)
-                            .foregroundColor(.textTertiary)
-                    }
+                    Text("Street")
+                        .font(.inputLabel)
+                        .foregroundColor(.textPrimary)
                     
                     TextField("Street name or number", text: $viewModel.registrationData.streetAddress)
                         .textFieldStyle(ForsaTextFieldStyle(isFocused: focusedField == .street))
@@ -199,16 +179,11 @@ struct Step4_AddressView: View {
             
             // Building and Floor/Apt Row
             HStack(spacing: 12) {
-                // Building (المبنى)
+                // Building
                 VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 4) {
-                        Text("Building")
-                            .font(.inputLabel)
-                            .foregroundColor(.textPrimary)
-                        Text("المبنى")
-                            .font(.caption)
-                            .foregroundColor(.textTertiary)
-                    }
+                    Text("Building")
+                        .font(.inputLabel)
+                        .foregroundColor(.textPrimary)
                     
                     TextField("e.g., 12", text: $viewModel.registrationData.building)
                         .textFieldStyle(ForsaTextFieldStyle(isFocused: focusedField == .building))
@@ -217,7 +192,7 @@ struct Step4_AddressView: View {
                         .onSubmit { focusedField = .floor }
                 }
                 
-                // Floor (الطابق) - Optional
+                // Floor - Optional
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 4) {
                         Text("Floor")
@@ -238,7 +213,7 @@ struct Step4_AddressView: View {
                 }
                 .frame(width: 100)
                 
-                // Apartment (الشقة) - Optional
+                // Apartment - Optional
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 4) {
                         Text("Apt")
@@ -518,15 +493,9 @@ struct GovernoratePickerSheet: View {
                         dismiss()
                     }) {
                         HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(governorate.displayName)
-                                    .font(.body)
-                                    .foregroundColor(.textPrimary)
-                                
-                                Text(governorate.displayNameArabic)
-                                    .font(.caption)
-                                    .foregroundColor(.textSecondary)
-                            }
+                            Text(governorate.displayName)
+                                .font(.body)
+                                .foregroundColor(.textPrimary)
                             
                             Spacer()
                             

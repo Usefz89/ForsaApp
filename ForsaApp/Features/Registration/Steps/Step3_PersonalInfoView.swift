@@ -14,6 +14,9 @@ struct Step3_PersonalInfoView: View {
     @State private var showDatePicker = false
     @State private var showCitizenshipPicker = false
     @State private var showBirthCountryPicker = false
+    @State private var showValidationError = false
+    @State private var validationErrorMessage = ""
+    @State private var shakeOffset: CGFloat = 0
     
     private let minimumDate: Date = {
         Calendar.current.date(byAdding: .year, value: -100, to: Date()) ?? Date()
@@ -24,32 +27,133 @@ struct Step3_PersonalInfoView: View {
     }()
     
     var body: some View {
-        RegistrationStepContainer(
-            buttonTitle: "Continue",
-            isButtonDisabled: !isFormValid,
-            onPrimaryTap: {
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                    viewModel.nextStep()
+        ZStack(alignment: .bottom) {
+            RegistrationStepContainer(
+                buttonTitle: "Continue",
+                isButtonDisabled: false, // Always enabled - we handle validation on tap
+                onPrimaryTap: {
+                    handleContinueTap()
+                }
+            ) {
+                VStack(spacing: 28) {
+                    // Header
+                    personalInfoHeader
+                    
+                    // Date of Birth
+                    dateOfBirthSection
+                    
+                    // Citizenship
+                    citizenshipSection
+                    
+                    // Country of Birth
+                    birthCountrySection
+                    
+                    // Validation error banner (inline)
+                    if showValidationError {
+                        validationErrorBanner
+                            .transition(.asymmetric(
+                                insertion: .move(edge: .top).combined(with: .opacity),
+                                removal: .opacity
+                            ))
+                    }
+                    
+                    // Info card
+                    infoCard
                 }
             }
-        ) {
-            VStack(spacing: 28) {
-                // Header
-                personalInfoHeader
-                
-                // Date of Birth
-                dateOfBirthSection
-                
-                // Citizenship
-                citizenshipSection
-                
-                // Country of Birth
-                birthCountrySection
-                
-                // Info card
-                infoCard
+        }
+        .onChange(of: viewModel.registrationData.dateOfBirth) { _, _ in
+            // Clear error when user selects date
+            if showValidationError {
+                withAnimation(.easeOut(duration: 0.2)) {
+                    showValidationError = false
+                }
             }
         }
+    }
+    
+    // MARK: - Actions
+    
+    private func handleContinueTap() {
+        let errors = validateForm()
+        
+        if errors.isEmpty {
+            // Form is valid - proceed
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                viewModel.nextStep()
+            }
+        } else {
+            // Show first error
+            validationErrorMessage = errors.first ?? "Please complete all required fields"
+            
+            // Haptic feedback
+            let generator = UINotificationFeedbackGenerator()
+            generator.notificationOccurred(.error)
+            
+            // Show error with animation
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                showValidationError = true
+            }
+            
+            // Shake animation
+            withAnimation(.default) {
+                shakeOffset = 10
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                withAnimation(.default) {
+                    shakeOffset = -8
+                }
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                withAnimation(.default) {
+                    shakeOffset = 6
+                }
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                withAnimation(.default) {
+                    shakeOffset = 0
+                }
+            }
+        }
+    }
+    
+    private func validateForm() -> [String] {
+        // Use ViewModel's centralized validation
+        return viewModel.validatePersonalDetailsStep()
+    }
+    
+    // MARK: - Validation Error Banner
+    
+    private var validationErrorBanner: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundColor(.white)
+            
+            Text(validationErrorMessage)
+                .font(.callout)
+                .fontWeight(.medium)
+                .foregroundColor(.white)
+                .multilineTextAlignment(.leading)
+            
+            Spacer()
+            
+            Button(action: {
+                withAnimation(.easeOut(duration: 0.2)) {
+                    showValidationError = false
+                }
+            }) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 20))
+                    .foregroundColor(.white.opacity(0.8))
+            }
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.errorRed)
+        )
+        .offset(x: shakeOffset)
     }
     
     // MARK: - Header
@@ -84,15 +188,21 @@ struct Step3_PersonalInfoView: View {
     
     private var dateOfBirthSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Date of Birth")
-                .font(.inputLabel)
-                .foregroundColor(.textPrimary)
+            // Label with required indicator
+            HStack(spacing: 4) {
+                Text("Date of Birth")
+                    .font(.inputLabel)
+                    .foregroundColor(.textPrimary)
+                Text("*")
+                    .font(.inputLabel)
+                    .foregroundColor(.errorRed)
+            }
             
             Button(action: { showDatePicker = true }) {
                 HStack {
                     Image(systemName: "calendar")
                         .font(.system(size: 18))
-                        .foregroundColor(.textTertiary)
+                        .foregroundColor(dateOfBirthHasError ? .errorRed : .textTertiary)
                     
                     Text(dateOfBirthText)
                         .font(.inputText)
@@ -110,10 +220,11 @@ struct Step3_PersonalInfoView: View {
                 .cornerRadius(12)
                 .overlay(
                     RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color.borderPrimary, lineWidth: 1)
+                        .stroke(dateOfBirthHasError ? Color.errorRed : Color.borderPrimary, lineWidth: dateOfBirthHasError ? 1.5 : 1)
                 )
             }
             
+            // Status text
             if let dob = viewModel.registrationData.dateOfBirth {
                 let age = calculateAge(from: dob)
                 if age < 18 {
@@ -125,10 +236,19 @@ struct Step3_PersonalInfoView: View {
                     }
                     .foregroundColor(.errorRed)
                 } else {
-                    Text("Age: \(age) years old")
-                        .font(.caption1)
-                        .foregroundColor(.textTertiary)
+                    HStack(spacing: 4) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.caption1)
+                        Text("Age: \(age) years old")
+                            .font(.caption1)
+                    }
+                    .foregroundColor(.successGreen)
                 }
+            } else if showValidationError {
+                // Show hint when validation failed and field is empty
+                Text("Required — tap to select your date of birth")
+                    .font(.caption1)
+                    .foregroundColor(.errorRed)
             }
         }
         .sheet(isPresented: $showDatePicker) {
@@ -145,13 +265,23 @@ struct Step3_PersonalInfoView: View {
         }
     }
     
+    private var dateOfBirthHasError: Bool {
+        showValidationError && viewModel.registrationData.dateOfBirth == nil
+    }
+    
     // MARK: - Citizenship Section
     
     private var citizenshipSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Country of Citizenship")
-                .font(.inputLabel)
-                .foregroundColor(.textPrimary)
+            // Label with required indicator
+            HStack(spacing: 4) {
+                Text("Country of Citizenship")
+                    .font(.inputLabel)
+                    .foregroundColor(.textPrimary)
+                Text("*")
+                    .font(.inputLabel)
+                    .foregroundColor(.errorRed)
+            }
             
             Button(action: { showCitizenshipPicker = true }) {
                 HStack {
@@ -163,6 +293,13 @@ struct Step3_PersonalInfoView: View {
                         .foregroundColor(.textPrimary)
                     
                     Spacer()
+                    
+                    // Show checkmark when selected
+                    if !viewModel.registrationData.citizenship.isEmpty {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 16))
+                            .foregroundColor(.successGreen)
+                    }
                     
                     Image(systemName: "chevron.down")
                         .font(.caption)
@@ -204,6 +341,13 @@ struct Step3_PersonalInfoView: View {
                         .foregroundColor(.textPrimary)
                     
                     Spacer()
+                    
+                    // Show checkmark when selected
+                    if !viewModel.registrationData.countryOfBirth.isEmpty {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 16))
+                            .foregroundColor(.successGreen)
+                    }
                     
                     Image(systemName: "chevron.down")
                         .font(.caption)

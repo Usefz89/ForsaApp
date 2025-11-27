@@ -34,11 +34,11 @@ struct KYCRegistrationData: Codable {
     var country: String = "KWT"
     
     // MARK: - Kuwait-Specific Address Fields
-    var block: String = ""        // رقم القطعة - Block number
-    var building: String = ""     // المبنى - Building number/name
-    var floor: String?            // الطابق - Floor (optional)
-    var area: String = ""         // المنطقة - Area (e.g., Salmiya, Hawalli)
-    var governorate: String = ""  // المحافظة - Governorate
+    var block: String = ""        // Block number
+    var building: String = ""     // Building number/name
+    var floor: String?            // Floor (optional)
+    var area: String = ""         // Area (e.g., Salmiya, Hawalli)
+    var governorate: String = ""  // Governorate
     
     // MARK: - Step 4: Tax & Financial
     var taxId: String = ""  // Civil ID for Kuwait
@@ -261,7 +261,7 @@ enum TaxIdType: String, Codable, CaseIterable {
         case .itin: return "Individual Tax ID (ITIN)"
         case .foreignPassport: return "Passport Number"
         case .foreignId: return "Government ID"
-        case .kuwaitCivilId: return "Kuwait Civil ID (الرقم المدني)"
+        case .kuwaitCivilId: return "Kuwait Civil ID"
         }
     }
     
@@ -760,6 +760,7 @@ struct Country: Codable, Identifiable, Hashable {
     let code: String
     let name: String
     let flag: String
+    let dialCode: String
     
     var id: String { code }
     
@@ -769,10 +770,10 @@ struct Country: Codable, Identifiable, Hashable {
     /// Check if country is USA
     var isUSA: Bool { code == "USA" }
     
-    static let kuwait = Country(code: "KWT", name: "Kuwait", flag: "🇰🇼")
-    static let usa = Country(code: "USA", name: "United States", flag: "🇺🇸")
-    static let canada = Country(code: "CAN", name: "Canada", flag: "🇨🇦")
-    static let uk = Country(code: "GBR", name: "United Kingdom", flag: "🇬🇧")
+    static let kuwait = Country(code: "KWT", name: "Kuwait", flag: "🇰🇼", dialCode: "+965")
+    static let usa = Country(code: "USA", name: "United States", flag: "🇺🇸", dialCode: "+1")
+    static let canada = Country(code: "CAN", name: "Canada", flag: "🇨🇦", dialCode: "+1")
+    static let uk = Country(code: "GBR", name: "United Kingdom", flag: "🇬🇧", dialCode: "+44")
     
     /// Primary country for the app (Kuwait-only)
     static let primary = kuwait
@@ -783,37 +784,37 @@ struct Country: Codable, Identifiable, Hashable {
         kuwait,
         
         // GCC countries (regional priority)
-        Country(code: "SAU", name: "Saudi Arabia", flag: "🇸🇦"),
-        Country(code: "ARE", name: "United Arab Emirates", flag: "🇦🇪"),
-        Country(code: "QAT", name: "Qatar", flag: "🇶🇦"),
-        Country(code: "BHR", name: "Bahrain", flag: "🇧🇭"),
-        Country(code: "OMN", name: "Oman", flag: "🇴🇲"),
+        Country(code: "SAU", name: "Saudi Arabia", flag: "🇸🇦", dialCode: "+966"),
+        Country(code: "ARE", name: "United Arab Emirates", flag: "🇦🇪", dialCode: "+971"),
+        Country(code: "QAT", name: "Qatar", flag: "🇶🇦", dialCode: "+974"),
+        Country(code: "BHR", name: "Bahrain", flag: "🇧🇭", dialCode: "+973"),
+        Country(code: "OMN", name: "Oman", flag: "🇴🇲", dialCode: "+968"),
         
         // Other Arab countries
-        Country(code: "EGY", name: "Egypt", flag: "🇪🇬"),
-        Country(code: "JOR", name: "Jordan", flag: "🇯🇴"),
-        Country(code: "LBN", name: "Lebanon", flag: "🇱🇧"),
-        Country(code: "IRQ", name: "Iraq", flag: "🇮🇶"),
-        Country(code: "SYR", name: "Syria", flag: "🇸🇾"),
-        Country(code: "PSE", name: "Palestine", flag: "🇵🇸"),
-        Country(code: "YEM", name: "Yemen", flag: "🇾🇪"),
+        Country(code: "EGY", name: "Egypt", flag: "🇪🇬", dialCode: "+20"),
+        Country(code: "JOR", name: "Jordan", flag: "🇯🇴", dialCode: "+962"),
+        Country(code: "LBN", name: "Lebanon", flag: "🇱🇧", dialCode: "+961"),
+        Country(code: "IRQ", name: "Iraq", flag: "🇮🇶", dialCode: "+964"),
+        Country(code: "SYR", name: "Syria", flag: "🇸🇾", dialCode: "+963"),
+        Country(code: "PSE", name: "Palestine", flag: "🇵🇸", dialCode: "+970"),
+        Country(code: "YEM", name: "Yemen", flag: "🇾🇪", dialCode: "+967"),
         
         // South Asian countries (large expat communities in Kuwait)
-        Country(code: "IND", name: "India", flag: "🇮🇳"),
-        Country(code: "PAK", name: "Pakistan", flag: "🇵🇰"),
-        Country(code: "BGD", name: "Bangladesh", flag: "🇧🇩"),
-        Country(code: "LKA", name: "Sri Lanka", flag: "🇱🇰"),
-        Country(code: "NPL", name: "Nepal", flag: "🇳🇵"),
+        Country(code: "IND", name: "India", flag: "🇮🇳", dialCode: "+91"),
+        Country(code: "PAK", name: "Pakistan", flag: "🇵🇰", dialCode: "+92"),
+        Country(code: "BGD", name: "Bangladesh", flag: "🇧🇩", dialCode: "+880"),
+        Country(code: "LKA", name: "Sri Lanka", flag: "🇱🇰", dialCode: "+94"),
+        Country(code: "NPL", name: "Nepal", flag: "🇳🇵", dialCode: "+977"),
         
         // Southeast Asian countries (large expat communities)
-        Country(code: "PHL", name: "Philippines", flag: "🇵🇭"),
-        Country(code: "IDN", name: "Indonesia", flag: "🇮🇩"),
+        Country(code: "PHL", name: "Philippines", flag: "🇵🇭", dialCode: "+63"),
+        Country(code: "IDN", name: "Indonesia", flag: "🇮🇩", dialCode: "+62"),
         
         // Western countries
         usa, canada, uk,
-        Country(code: "DEU", name: "Germany", flag: "🇩🇪"),
-        Country(code: "FRA", name: "France", flag: "🇫🇷"),
-        Country(code: "AUS", name: "Australia", flag: "🇦🇺"),
+        Country(code: "DEU", name: "Germany", flag: "🇩🇪", dialCode: "+49"),
+        Country(code: "FRA", name: "France", flag: "🇫🇷", dialCode: "+33"),
+        Country(code: "AUS", name: "Australia", flag: "🇦🇺", dialCode: "+61"),
     ]
     
     /// Get country by code
