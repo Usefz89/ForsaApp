@@ -182,17 +182,19 @@ struct KYCRegistrationData: Codable {
 
 enum RegistrationStep: Int, Codable, CaseIterable {
     case basicInfo = 0
-    case personalDetails = 1
-    case address = 2
-    case taxFinancial = 3
-    case disclosures = 4
-    case trustedContact = 5
-    case agreements = 6
-    case review = 7
+    case phoneVerification = 1  // NEW: Phone verification step
+    case personalDetails = 2
+    case address = 3
+    case taxFinancial = 4
+    case disclosures = 5
+    case trustedContact = 6
+    case agreements = 7
+    case review = 8
     
     var title: String {
         switch self {
         case .basicInfo: return "Account"
+        case .phoneVerification: return "Verify Phone"
         case .personalDetails: return "Personal"
         case .address: return "Address"
         case .taxFinancial: return "Financial"
@@ -206,6 +208,7 @@ enum RegistrationStep: Int, Codable, CaseIterable {
     var subtitle: String {
         switch self {
         case .basicInfo: return "Create your account"
+        case .phoneVerification: return "Verify your phone number"
         case .personalDetails: return "Tell us about yourself"
         case .address: return "Where do you live?"
         case .taxFinancial: return "Tax & financial information"
@@ -219,6 +222,7 @@ enum RegistrationStep: Int, Codable, CaseIterable {
     var icon: String {
         switch self {
         case .basicInfo: return "person.crop.circle"
+        case .phoneVerification: return "phone.badge.checkmark"
         case .personalDetails: return "person.text.rectangle"
         case .address: return "location.circle"
         case .taxFinancial: return "dollarsign.circle"
@@ -238,7 +242,7 @@ enum RegistrationStep: Int, Codable, CaseIterable {
     }
     
     static var requiredSteps: [RegistrationStep] {
-        [.basicInfo, .personalDetails, .address, .taxFinancial, .disclosures, .agreements]
+        [.basicInfo, .phoneVerification, .personalDetails, .address, .taxFinancial, .disclosures, .agreements]
     }
 }
 

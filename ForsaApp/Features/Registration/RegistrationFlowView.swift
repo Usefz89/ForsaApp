@@ -156,6 +156,8 @@ struct RegistrationFlowView: View {
         switch viewModel.currentStep {
         case .basicInfo:
             Step1_CreateAccountView(viewModel: viewModel)
+        case .phoneVerification:
+            Step2_PhoneVerificationView(viewModel: viewModel)
         case .personalDetails:
             Step3_PersonalInfoView(viewModel: viewModel)
         case .address:

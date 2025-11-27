@@ -260,8 +260,24 @@ struct Step1_CreateAccountView: View {
         !viewModel.registrationData.firstName.isEmpty &&
         !viewModel.registrationData.lastName.isEmpty &&
         isValidEmail &&
-        viewModel.registrationData.password.count >= 8 &&
+        isPasswordValid &&
         passwordsMatch
+    }
+    
+    /// Password is valid if it meets all requirements:
+    /// - At least 8 characters
+    /// - Contains uppercase, lowercase, and number
+    /// - Either has a special character OR is at least 12 characters
+    private var isPasswordValid: Bool {
+        let password = viewModel.registrationData.password
+        let hasMinLength = password.count >= 8
+        let hasUppercase = password.range(of: "[A-Z]", options: .regularExpression) != nil
+        let hasLowercase = password.range(of: "[a-z]", options: .regularExpression) != nil
+        let hasNumber = password.range(of: "[0-9]", options: .regularExpression) != nil
+        let hasSpecialChar = password.range(of: "[!@#$%^&*(),.?\":{}|<>]", options: .regularExpression) != nil
+        let hasLongLength = password.count >= 12
+        
+        return hasMinLength && hasUppercase && hasLowercase && hasNumber && (hasSpecialChar || hasLongLength)
     }
     
     private var confirmPasswordBorderColor: Color {
@@ -279,6 +295,19 @@ struct PasswordStrengthIndicator: View {
     
     private var strength: PasswordStrength {
         PasswordStrength.calculate(for: password)
+    }
+    
+    private var hasSpecialChar: Bool {
+        password.range(of: "[!@#$%^&*(),.?\":{}|<>]", options: .regularExpression) != nil
+    }
+    
+    private var hasLongLength: Bool {
+        password.count >= 12
+    }
+    
+    /// The security requirement: either special char OR 12+ characters
+    private var meetsSecurityRequirement: Bool {
+        hasSpecialChar || hasLongLength
     }
     
     var body: some View {
@@ -310,6 +339,30 @@ struct PasswordStrengthIndicator: View {
                     text: "Contains a number",
                     isMet: password.range(of: "[0-9]", options: .regularExpression) != nil
                 )
+                
+                // Special requirement: either special char OR 12+ characters
+                if !meetsSecurityRequirement {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Plus one of the following:")
+                            .font(.caption2)
+                            .foregroundColor(.textTertiary)
+                            .padding(.top, 4)
+                        
+                        PasswordRequirementRow(
+                            text: "Contains special character (!@#$...)",
+                            isMet: hasSpecialChar
+                        )
+                        PasswordRequirementRow(
+                            text: "OR at least 12 characters",
+                            isMet: hasLongLength
+                        )
+                    }
+                } else {
+                    PasswordRequirementRow(
+                        text: hasSpecialChar ? "Contains special character" : "At least 12 characters",
+                        isMet: true
+                    )
+                }
             }
         }
         .padding(12)
@@ -370,16 +423,25 @@ enum PasswordStrength {
     
     static func calculate(for password: String) -> PasswordStrength {
         var score = 0
+        
+        // Base requirements
         if password.count >= 8 { score += 1 }
         if password.range(of: "[A-Z]", options: .regularExpression) != nil { score += 1 }
         if password.range(of: "[a-z]", options: .regularExpression) != nil { score += 1 }
         if password.range(of: "[0-9]", options: .regularExpression) != nil { score += 1 }
-        if password.range(of: "[^A-Za-z0-9]", options: .regularExpression) != nil { score += 1 }
+        
+        // Security requirement: special char OR 12+ characters
+        let hasSpecialChar = password.range(of: "[!@#$%^&*(),.?\":{}|<>]", options: .regularExpression) != nil
+        let hasLongLength = password.count >= 12
+        if hasSpecialChar || hasLongLength { score += 1 }
+        
+        // Extra credit for both special char AND long length
+        if hasSpecialChar && hasLongLength { score += 1 }
         
         switch score {
-        case 0...1: return .weak
-        case 2: return .fair
-        case 3: return .good
+        case 0...2: return .weak
+        case 3: return .fair
+        case 4: return .good
         default: return .strong
         }
     }

@@ -355,6 +355,8 @@ class RegistrationViewModel: ObservableObject {
         switch currentStep {
         case .basicInfo:
             return validateBasicInfo()
+        case .phoneVerification:
+            return validatePhoneVerification()
         case .personalDetails:
             return validatePersonalDetails()
         case .address:
@@ -408,6 +410,15 @@ class RegistrationViewModel: ObservableObject {
             return false
         }
         
+        return true
+    }
+    
+    private func validatePhoneVerification() -> Bool {
+        // Phone must be verified to proceed
+        if !isPhoneVerified {
+            stepValidationErrors[.phoneVerification] = ["Please verify your phone number"]
+            return false
+        }
         return true
     }
     
@@ -1459,6 +1470,8 @@ extension RegistrationViewModel {
         switch step {
         case .basicInfo:
             isValid = registrationData.isBasicInfoComplete
+        case .phoneVerification:
+            isValid = isPhoneVerified
         case .personalDetails:
             isValid = registrationData.isPersonalDetailsComplete
         case .address:
