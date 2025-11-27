@@ -37,6 +37,9 @@ class AppCoordinator: ObservableObject {
         if let portfolioRaw = UserDefaults.standard.string(forKey: StorageKeys.selectedPortfolio),
            let portfolio = RiskLevel(rawValue: portfolioRaw) {
             selectedPortfolio = portfolio
+            print("📊 Loaded saved portfolio: \(portfolio.title)")
+        } else {
+            print("📊 No saved portfolio found in UserDefaults")
         }
     }
 
@@ -246,6 +249,8 @@ class AppCoordinator: ObservableObject {
                 self.currentUser = user
                 self.isAuthenticated = true
                 self.checkKYCStatus()
+                // Load saved portfolio preference for this user
+                self.loadSelectedPortfolio()
             }
             
         } catch {
@@ -465,8 +470,10 @@ class AppCoordinator: ObservableObject {
         // Update the @Published property (this triggers UI refresh)
         selectedPortfolio = goal.assignedPortfolio
         
-        // Save selected portfolio preference to UserDefaults
+        // Save selected portfolio preference to UserDefaults and force sync
         UserDefaults.standard.set(goal.assignedPortfolio.rawValue, forKey: StorageKeys.selectedPortfolio)
+        UserDefaults.standard.synchronize()
+        print("💾 Saved portfolio selection: \(goal.assignedPortfolio.rawValue)")
         
         // Update saved user
         updateSavedUser(updatedUser)

@@ -307,35 +307,35 @@ struct RegistrationStepContainer<Content: View>: View {
             
             // Fixed bottom buttons - hidden when keyboard is visible
             if !isKeyboardVisible {
-                VStack(spacing: 12) {
-                    ForsaButton(
-                        buttonTitle,
-                        style: .primary,
-                        size: .large,
-                        isDisabled: isButtonDisabled,
-                        isLoading: isLoading
-                    ) {
-                        onPrimaryTap()
-                    }
-                    
-                    if showSecondaryButton {
-                        Button(action: onSecondaryTap) {
-                            Text(secondaryButtonTitle)
-                                .font(.buttonMedium)
-                                .foregroundColor(.textSecondary)
-                        }
-                        .padding(.vertical, 8)
-                    }
+            VStack(spacing: 12) {
+                ForsaButton(
+                    buttonTitle,
+                    style: .primary,
+                    size: .large,
+                    isDisabled: isButtonDisabled,
+                    isLoading: isLoading
+                ) {
+                    onPrimaryTap()
                 }
-                .padding(.horizontal, 24)
-                .padding(.bottom, 34)
-                .padding(.top, 16)
-                .background(
-                    Rectangle()
-                        .fill(Color.backgroundPrimary)
-                        .shadow(color: Color.shadowLight, radius: 20, x: 0, y: -10)
-                        .ignoresSafeArea(edges: .bottom)
-                )
+                
+                if showSecondaryButton {
+                    Button(action: onSecondaryTap) {
+                        Text(secondaryButtonTitle)
+                            .font(.buttonMedium)
+                            .foregroundColor(.textSecondary)
+                    }
+                    .padding(.vertical, 8)
+                }
+            }
+            .padding(.horizontal, 24)
+            .padding(.bottom, 34)
+            .padding(.top, 16)
+            .background(
+                Rectangle()
+                    .fill(Color.backgroundPrimary)
+                    .shadow(color: Color.shadowLight, radius: 20, x: 0, y: -10)
+                    .ignoresSafeArea(edges: .bottom)
+            )
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }

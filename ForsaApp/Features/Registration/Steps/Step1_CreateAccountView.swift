@@ -86,33 +86,33 @@ struct Step1_CreateAccountView: View {
     private var nameFields: some View {
         VStack(alignment: .leading, spacing: 16) {
             // First Name
-            VStack(alignment: .leading, spacing: 8) {
-                Text("First Name")
-                    .font(.inputLabel)
-                    .foregroundColor(.textPrimary)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("First Name")
+                        .font(.inputLabel)
+                        .foregroundColor(.textPrimary)
+                    
+                    TextField("First name", text: $viewModel.registrationData.firstName)
+                        .textFieldStyle(ForsaTextFieldStyle(isFocused: focusedField == .firstName))
+                        .textInputAutocapitalization(.words)
+                        .textContentType(.givenName)
+                        .focused($focusedField, equals: .firstName)
+                        .submitLabel(.next)
+                        .onSubmit { focusedField = .lastName }
+                }
                 
-                TextField("First name", text: $viewModel.registrationData.firstName)
-                    .textFieldStyle(ForsaTextFieldStyle(isFocused: focusedField == .firstName))
-                    .textInputAutocapitalization(.words)
-                    .textContentType(.givenName)
-                    .focused($focusedField, equals: .firstName)
-                    .submitLabel(.next)
-                    .onSubmit { focusedField = .lastName }
-            }
-            
             // Last Name
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Last Name")
-                    .font(.inputLabel)
-                    .foregroundColor(.textPrimary)
-                
-                TextField("Last name", text: $viewModel.registrationData.lastName)
-                    .textFieldStyle(ForsaTextFieldStyle(isFocused: focusedField == .lastName))
-                    .textInputAutocapitalization(.words)
-                    .textContentType(.familyName)
-                    .focused($focusedField, equals: .lastName)
-                    .submitLabel(.next)
-                    .onSubmit { focusedField = .email }
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Last Name")
+                        .font(.inputLabel)
+                        .foregroundColor(.textPrimary)
+                    
+                    TextField("Last name", text: $viewModel.registrationData.lastName)
+                        .textFieldStyle(ForsaTextFieldStyle(isFocused: focusedField == .lastName))
+                        .textInputAutocapitalization(.words)
+                        .textContentType(.familyName)
+                        .focused($focusedField, equals: .lastName)
+                        .submitLabel(.next)
+                        .onSubmit { focusedField = .email }
             }
         }
     }
