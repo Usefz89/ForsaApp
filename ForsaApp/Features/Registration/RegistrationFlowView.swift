@@ -266,7 +266,8 @@ struct RegistrationStepContainer<Content: View>: View {
     let secondaryButtonTitle: String
     let onPrimaryTap: () -> Void
     let onSecondaryTap: () -> Void
-    @Binding var scrollToId: String?
+    
+    @State private var isKeyboardVisible = false
     
     init(
         buttonTitle: String = "Continue",
@@ -274,7 +275,6 @@ struct RegistrationStepContainer<Content: View>: View {
         isLoading: Bool = false,
         showSecondaryButton: Bool = false,
         secondaryButtonTitle: String = "Skip",
-        scrollToId: Binding<String?> = .constant(nil),
         onPrimaryTap: @escaping () -> Void,
         onSecondaryTap: @escaping () -> Void = {},
         @ViewBuilder content: () -> Content
@@ -285,62 +285,66 @@ struct RegistrationStepContainer<Content: View>: View {
         self.isLoading = isLoading
         self.showSecondaryButton = showSecondaryButton
         self.secondaryButtonTitle = secondaryButtonTitle
-        self._scrollToId = scrollToId
         self.onPrimaryTap = onPrimaryTap
         self.onSecondaryTap = onSecondaryTap
     }
     
     var body: some View {
         VStack(spacing: 0) {
-            // Scrollable content with auto-scroll support
-            ScrollViewReader { proxy in
-                ScrollView(showsIndicators: false) {
-                    content
-                        .padding(.horizontal, 24)
-                        .padding(.top, 24)
-                        .padding(.bottom, 120) // Space for fixed buttons
-                }
-                .onChange(of: scrollToId) { _, newValue in
-                    if let id = newValue {
-                        withAnimation(.easeInOut(duration: 0.3)) {
-                            proxy.scrollTo(id, anchor: .center)
-                        }
-                    }
-                }
+            // Scrollable content
+            ScrollView(showsIndicators: false) {
+                content
+                    .padding(.horizontal, 24)
+                    .padding(.top, 24)
+                    .padding(.bottom, isKeyboardVisible ? 20 : 120) // Less padding when keyboard visible
+            }
+            .onTapGesture {
+                // Dismiss keyboard when tapping outside
+                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
             }
             
             Spacer(minLength: 0)
             
-            // Fixed bottom buttons
-            VStack(spacing: 12) {
-                ForsaButton(
-                    buttonTitle,
-                    style: .primary,
-                    size: .large,
-                    isDisabled: isButtonDisabled,
-                    isLoading: isLoading
-                ) {
-                    onPrimaryTap()
-                }
-                
-                if showSecondaryButton {
-                    Button(action: onSecondaryTap) {
-                        Text(secondaryButtonTitle)
-                            .font(.buttonMedium)
-                            .foregroundColor(.textSecondary)
+            // Fixed bottom buttons - hidden when keyboard is visible
+            if !isKeyboardVisible {
+                VStack(spacing: 12) {
+                    ForsaButton(
+                        buttonTitle,
+                        style: .primary,
+                        size: .large,
+                        isDisabled: isButtonDisabled,
+                        isLoading: isLoading
+                    ) {
+                        onPrimaryTap()
                     }
-                    .padding(.vertical, 8)
+                    
+                    if showSecondaryButton {
+                        Button(action: onSecondaryTap) {
+                            Text(secondaryButtonTitle)
+                                .font(.buttonMedium)
+                                .foregroundColor(.textSecondary)
+                        }
+                        .padding(.vertical, 8)
+                    }
                 }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 34)
+                .padding(.top, 16)
+                .background(
+                    Rectangle()
+                        .fill(Color.backgroundPrimary)
+                        .shadow(color: Color.shadowLight, radius: 20, x: 0, y: -10)
+                        .ignoresSafeArea(edges: .bottom)
+                )
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
-            .padding(.horizontal, 24)
-            .padding(.bottom, 34)
-            .padding(.top, 16)
-            .background(
-                Rectangle()
-                    .fill(Color.backgroundPrimary)
-                    .shadow(color: Color.shadowLight, radius: 20, x: 0, y: -10)
-                    .ignoresSafeArea(edges: .bottom)
-            )
+        }
+        .animation(.easeInOut(duration: 0.25), value: isKeyboardVisible)
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+            isKeyboardVisible = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            isKeyboardVisible = false
         }
     }
 }

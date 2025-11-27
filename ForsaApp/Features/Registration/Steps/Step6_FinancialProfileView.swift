@@ -574,7 +574,7 @@ struct EmploymentPickerSheet: View {
                         HStack {
                             Text(status.displayName)
                                 .font(.body)
-                                .foregroundColor(.textPrimary)
+                                .foregroundColor(.primary)
                             
                             Spacer()
                             
@@ -586,8 +586,10 @@ struct EmploymentPickerSheet: View {
                         }
                         .padding(.vertical, 4)
                     }
+                    .listRowBackground(Color(uiColor: .secondarySystemGroupedBackground))
                 }
             }
+            .scrollContentBackground(.visible)
             .navigationTitle("Employment Status")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -618,7 +620,7 @@ struct IncomePickerSheet: View {
                         HStack {
                             Text(range.displayName)
                                 .font(.body)
-                                .foregroundColor(.textPrimary)
+                                .foregroundColor(.primary)
                             
                             Spacer()
                             
@@ -630,8 +632,10 @@ struct IncomePickerSheet: View {
                         }
                         .padding(.vertical, 4)
                     }
+                    .listRowBackground(Color(uiColor: .secondarySystemGroupedBackground))
                 }
             }
+            .scrollContentBackground(.visible)
             .navigationTitle("Annual Income")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -662,7 +666,7 @@ struct NetWorthPickerSheet: View {
                         HStack {
                             Text(range.displayName)
                                 .font(.body)
-                                .foregroundColor(.textPrimary)
+                                .foregroundColor(.primary)
                             
                             Spacer()
                             
@@ -674,8 +678,10 @@ struct NetWorthPickerSheet: View {
                         }
                         .padding(.vertical, 4)
                     }
+                    .listRowBackground(Color(uiColor: .secondarySystemGroupedBackground))
                 }
             }
+            .scrollContentBackground(.visible)
             .navigationTitle("Net Worth")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

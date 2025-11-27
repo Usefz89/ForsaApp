@@ -441,6 +441,7 @@ struct DatePickerSheet: View {
     let maximumDate: Date
     let title: String
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
     
     var body: some View {
         VStack(spacing: 20) {
@@ -448,12 +449,12 @@ struct DatePickerSheet: View {
             HStack {
                 Text(title)
                     .font(.headline)
-                    .foregroundColor(.textPrimary)
+                    .foregroundColor(.primary)
                 
                 Spacer()
                 
                 Button("Done") { dismiss() }
-                    .font(.bodyMedium)
+                    .font(.body.weight(.medium))
                     .foregroundColor(.primaryPurple)
             }
             .padding(.horizontal, 24)
@@ -470,7 +471,7 @@ struct DatePickerSheet: View {
             
             Spacer()
         }
-        .background(Color.backgroundPrimary)
+        .background(Color(uiColor: .systemBackground))
     }
 }
 
@@ -505,7 +506,7 @@ struct CountrySelectionSheet: View {
                             
                             Text(country.name)
                                 .font(.body)
-                                .foregroundColor(.textPrimary)
+                                .foregroundColor(.primary)
                             
                             Spacer()
                             
@@ -517,8 +518,10 @@ struct CountrySelectionSheet: View {
                         }
                         .padding(.vertical, 4)
                     }
+                    .listRowBackground(Color(uiColor: .secondarySystemGroupedBackground))
                 }
             }
+            .scrollContentBackground(.visible)
             .searchable(text: $searchText, prompt: "Search countries")
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)

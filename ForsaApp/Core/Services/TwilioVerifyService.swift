@@ -61,6 +61,34 @@ final class TwilioVerifyService: ObservableObject {
     ///   - channel: Delivery channel (sms or call)
     /// - Returns: Verification SID on success
     func sendOTP(to phoneNumber: String, channel: VerificationChannel = .sms) async throws -> String {
+        // ========== DEVELOPMENT BYPASS MODE ==========
+        // Skip real Twilio API calls to save credits during development
+        if AppConfig.Twilio.useDevelopmentBypass {
+            let formattedPhone = formatToE164(phoneNumber)
+            
+            print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            print("🧪 DEVELOPMENT MODE - Twilio Bypass Active")
+            print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            print("📱 Simulating OTP send to: \(maskPhoneNumber(formattedPhone))")
+            print("🔑 Use code: \(AppConfig.Twilio.testOTPCode)")
+            print("💰 No Twilio credits consumed!")
+            print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            
+            // Simulate network delay for realistic UX
+            try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+            
+            // Generate fake verification SID
+            let fakeSid = "DEV_\(UUID().uuidString.prefix(20))"
+            self.verificationSid = fakeSid
+            
+            // Reset attempt tracking for new session
+            resetAttemptTracking()
+            self.currentPhoneNumber = formattedPhone
+            
+            return fakeSid
+        }
+        // =============================================
+        
         isLoading = true
         lastError = nil
         
@@ -142,6 +170,52 @@ final class TwilioVerifyService: ObservableObject {
     ///   - code: 6-digit OTP code
     /// - Returns: True if verification successful
     func verifyOTP(phoneNumber: String, code: String) async throws -> Bool {
+        // ========== DEVELOPMENT BYPASS MODE ==========
+        // Skip real Twilio API calls to save credits during development
+        if AppConfig.Twilio.useDevelopmentBypass {
+            // Check if max attempts already reached
+            guard !maxAttemptsReached else {
+                let error = TwilioVerifyError.maxAttemptsReached
+                lastError = error
+                print("🧪 DEV MODE: Max attempts reached - request new code")
+                throw error
+            }
+            
+            let cleanCode = code.filter { $0.isNumber }
+            
+            print("🧪 DEV MODE: Verifying code '\(cleanCode)' (expected: '\(AppConfig.Twilio.testOTPCode)')")
+            
+            // Simulate network delay for realistic UX
+            try await Task.sleep(nanoseconds: 300_000_000) // 0.3 seconds
+            
+            if cleanCode == AppConfig.Twilio.testOTPCode {
+                print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+                print("✅ DEV MODE: Phone verified successfully!")
+                print("💰 No Twilio credits consumed!")
+                print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+                isVerified = true
+                resetAttemptTracking()
+                return true
+            } else {
+                // Simulate wrong code behavior - increment attempts
+                incrementAttemptCount()
+                
+                if maxAttemptsReached {
+                    let error = TwilioVerifyError.maxAttemptsReached
+                    lastError = error
+                    print("❌ DEV MODE: Max attempts reached - must request new code")
+                    throw error
+                }
+                
+                let error = TwilioVerifyError.incorrectCode
+                lastError = error
+                print("⚠️ DEV MODE: Incorrect code. \(remainingAttempts) attempts remaining.")
+                print("💡 Hint: Use code '\(AppConfig.Twilio.testOTPCode)'")
+                throw error
+            }
+        }
+        // =============================================
+        
         // Check if max attempts already reached before making API call
         guard !maxAttemptsReached else {
             let error = TwilioVerifyError.maxAttemptsReached

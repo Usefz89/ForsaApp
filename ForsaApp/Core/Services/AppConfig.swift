@@ -134,6 +134,15 @@ struct AppConfig {
         
         // Whether to use sandbox mode (for testing without sending real SMS)
         static let useSandbox = true
+        
+        // MARK: - Development Bypass Mode
+        // When enabled, skips real Twilio API calls to save credits during development
+        // Set to FALSE for production!
+        static let useDevelopmentBypass = true
+        
+        // Test OTP code accepted in development mode
+        // Users can enter this code to verify without receiving real SMS
+        static let testOTPCode = "123456"
     }
 }
 

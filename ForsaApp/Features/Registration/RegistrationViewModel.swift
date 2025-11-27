@@ -301,6 +301,9 @@ class RegistrationViewModel: ObservableObject {
     /// Save current progress to persistence
     /// Note: SSN is stored in Keychain, not UserDefaults
     func saveProgress() {
+        // Don't save if registration is already complete
+        guard !registrationComplete else { return }
+        
         // Store SSN securely in Keychain (never in UserDefaults)
         if !registrationData.taxId.isEmpty {
             keychainStorage.storeTaxId(registrationData.taxId)
@@ -316,8 +319,17 @@ class RegistrationViewModel: ObservableObject {
         }
     }
     
+    /// Stop auto-save timer (called when registration completes)
+    func stopAutoSave() {
+        autoSaveTimer?.invalidate()
+        autoSaveTimer = nil
+    }
+    
     /// Clear all saved progress and reset
     func clearProgress() {
+        // Stop auto-save timer first
+        stopAutoSave()
+        
         // Clear from UserDefaults
         KYCRegistrationData.clear()
         
@@ -333,6 +345,8 @@ class RegistrationViewModel: ObservableObject {
         confirmPassword = ""
         error = nil
         stepValidationErrors = [:]
+        registrationComplete = false
+        createdAccountId = nil
         
         // Reset phone verification state (clears attempt counter)
         twilioService.reset()
@@ -1081,6 +1095,9 @@ class RegistrationViewModel: ObservableObject {
             // Stop session timeout monitoring
             sessionManager.stopTimer()
             
+            // Stop auto-save timer (registration is complete)
+            stopAutoSave()
+            
             createdAccountId = accountId
             registrationComplete = true
             
@@ -1246,6 +1263,9 @@ class RegistrationViewModel: ObservableObject {
         
         // Stop session timeout monitoring
         sessionManager.stopTimer()
+        
+        // Stop auto-save timer (registration is complete)
+        stopAutoSave()
         
         createdAccountId = accountId
         registrationComplete = true
@@ -1507,6 +1527,11 @@ class RegistrationViewModel: ObservableObject {
     
     /// The main polling loop
     private func pollAccountStatusLoop(accountId: String) async {
+        // Initial delay to allow Alpaca to register the account
+        // Newly created accounts may not be immediately queryable
+        print("⏳ Waiting 3 seconds for account to be registered...")
+        try? await Task.sleep(nanoseconds: 3_000_000_000) // 3 seconds
+        
         while !Task.isCancelled && pollAttempts < maxPollAttempts {
             pollAttempts += 1
             print("📊 Poll attempt \(pollAttempts)/\(maxPollAttempts) for account: \(accountId)")
@@ -1553,10 +1578,40 @@ class RegistrationViewModel: ObservableObject {
                     print("⏳ Status still pending, will poll again...")
                 }
                 
+            } catch let error as AlpacaAPIError {
+                // Handle specific API errors
+                switch error {
+                case .notFound:
+                    // 404 "account not found" - common for newly created accounts
+                    // Alpaca needs time to register the account, don't show error
+                    print("⏳ Account not yet available (404), will retry...")
+                    
+                case .networkError(let message) where message.contains("not found") || message.contains("404"):
+                    // Also handle network error variant of 404
+                    print("⏳ Account not yet available, will retry...")
+                    
+                default:
+                    print("❌ Poll error: \(error.localizedDescription)")
+                    // Only show error after multiple failures to avoid flashing errors
+                    if pollAttempts >= 3 {
+                        await MainActor.run {
+                            self.pollingError = error.localizedDescription
+                        }
+                    }
+                }
             } catch {
-                print("❌ Poll error: \(error.localizedDescription)")
-                await MainActor.run {
-                    self.pollingError = error.localizedDescription
+                // Check if it's a 404 by looking at the error message
+                let errorMessage = error.localizedDescription
+                if errorMessage.contains("not found") || errorMessage.contains("404") || errorMessage.contains("40410000") {
+                    print("⏳ Account not yet available, will retry...")
+                } else {
+                    print("❌ Poll error: \(errorMessage)")
+                    // Only show error after multiple failures
+                    if pollAttempts >= 3 {
+                        await MainActor.run {
+                            self.pollingError = errorMessage
+                        }
+                    }
                 }
             }
             

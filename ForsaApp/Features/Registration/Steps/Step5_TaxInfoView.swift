@@ -424,11 +424,11 @@ struct TaxIdTypePickerSheet: View {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(type.displayName)
                                     .font(.body)
-                                    .foregroundColor(.textPrimary)
+                                    .foregroundColor(.primary)
                                 
                                 Text("Format: \(type.placeholder)")
-                                    .font(.caption1)
-                                    .foregroundColor(.textTertiary)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
                             }
                             
                             Spacer()
@@ -441,8 +441,10 @@ struct TaxIdTypePickerSheet: View {
                         }
                         .padding(.vertical, 4)
                     }
+                    .listRowBackground(Color(uiColor: .secondarySystemGroupedBackground))
                 }
             }
+            .scrollContentBackground(.visible)
             .navigationTitle("Select ID Type")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

@@ -127,7 +127,15 @@ class AppCoordinator: ObservableObject {
         // Also clear user name keys
         UserDefaults.standard.removeObject(forKey: "user_first_name")
         UserDefaults.standard.removeObject(forKey: "user_last_name")
+        
+        // Clear KYC registration data (persisted form fields)
+        KYCRegistrationData.clear()
+        
+        // Clear sensitive data from Keychain (SSN, tax ID, etc.)
+        SecureKeychainStorage.shared.clearAllSensitiveData()
+        
         UserDefaults.standard.synchronize()
+        print("✅ All session and registration data cleared")
     }
 
     // MARK: - Sign In

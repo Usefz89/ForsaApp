@@ -27,6 +27,7 @@ struct Step2_PhoneVerificationView: View {
     // Shake animation state for wrong OTP
     @State private var shakeOffset: CGFloat = 0
     @State private var isShaking = false
+    @FocusState private var phoneFieldFocused: Bool
     
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     
@@ -110,6 +111,45 @@ struct Step2_PhoneVerificationView: View {
                     viewModel.nextStep()
                 }
             }
+        }
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                
+                Button(action: {
+                    // Dismiss keyboard
+                    phoneFieldFocused = false
+                    otpFocused = false
+                    
+                    // Trigger action
+                    Task {
+                        await handlePrimaryAction()
+                    }
+                }) {
+                    HStack(spacing: 6) {
+                        Text(keyboardButtonTitle)
+                            .font(.calloutMedium)
+                        Image(systemName: "arrow.right.circle.fill")
+                            .font(.system(size: 16))
+                    }
+                    .foregroundColor(isButtonDisabled ? .textTertiary : .primaryPurple)
+                }
+                .disabled(isButtonDisabled || viewModel.isSendingOTP || viewModel.isVerifyingOTP)
+            }
+        }
+    }
+    
+    // MARK: - Keyboard Button Title
+    
+    private var keyboardButtonTitle: String {
+        if viewModel.isSendingOTP {
+            return "Sending..."
+        } else if viewModel.isVerifyingOTP {
+            return "Verifying..."
+        } else if viewModel.otpSent {
+            return "Verify"
+        } else {
+            return "Send Code"
         }
     }
     
@@ -328,13 +368,14 @@ struct Step2_PhoneVerificationView: View {
                 .foregroundColor(.textPrimary)
                 .keyboardType(.phonePad)
                 .textContentType(.telephoneNumber)
+                .focused($phoneFieldFocused)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 14)
                 .background(Color.backgroundCard)
                 .cornerRadius(12)
                 .overlay(
                     RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color.borderPrimary, lineWidth: 1)
+                        .stroke(phoneFieldFocused ? Color.primaryPurple : Color.borderPrimary, lineWidth: phoneFieldFocused ? 2 : 1)
                 )
             }
             

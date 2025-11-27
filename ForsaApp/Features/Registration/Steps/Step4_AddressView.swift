@@ -90,6 +90,35 @@ struct Step4_AddressView: View {
                 internationalAddressForm
             }
         }
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                
+                // Show Next or Done based on current field
+                if focusedField == .block {
+                    Button("Next") {
+                        focusedField = .street
+                    }
+                    .foregroundColor(.primaryPurple)
+                } else if focusedField == .floor {
+                    Button("Next") {
+                        focusedField = .unit
+                    }
+                    .foregroundColor(.primaryPurple)
+                } else if focusedField == .unit || focusedField == .zip {
+                    Button("Done") {
+                        focusedField = nil
+                    }
+                    .fontWeight(.semibold)
+                    .foregroundColor(.primaryPurple)
+                } else {
+                    Button("Done") {
+                        focusedField = nil
+                    }
+                    .foregroundColor(.primaryPurple)
+                }
+            }
+        }
         .sheet(isPresented: $showGovernoratePicker) {
             if isKuwait {
                 GovernoratePickerSheet(selectedGovernorate: $viewModel.registrationData.governorate)
@@ -229,12 +258,13 @@ struct Step4_AddressView: View {
                             .foregroundColor(.textTertiary)
                     }
                     
-                    TextField("e.g., 5A", text: Binding(
+                    TextField("e.g., 5", text: Binding(
                         get: { viewModel.registrationData.apartmentUnit ?? "" },
                         set: { viewModel.registrationData.apartmentUnit = $0.isEmpty ? nil : $0 }
                     ))
                     .textFieldStyle(ForsaTextFieldStyle(isFocused: focusedField == .unit))
                     .autocorrectionDisabled()
+                    .keyboardType(.numberPad)
                     .focused($focusedField, equals: .unit)
                 }
                 .frame(width: 80)
@@ -505,7 +535,7 @@ struct GovernoratePickerSheet: View {
                         HStack {
                             Text(governorate.displayName)
                                 .font(.body)
-                                .foregroundColor(.textPrimary)
+                                .foregroundColor(.primary)
                             
                             Spacer()
                             
@@ -517,8 +547,10 @@ struct GovernoratePickerSheet: View {
                         }
                         .padding(.vertical, 4)
                     }
+                    .listRowBackground(Color(uiColor: .secondarySystemGroupedBackground))
                 }
             }
+            .scrollContentBackground(.visible)
             .navigationTitle("Select Governorate")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -559,13 +591,13 @@ struct StatePickerSheet: View {
                         HStack {
                             Text(state.fullName)
                                 .font(.body)
-                                .foregroundColor(.textPrimary)
+                                .foregroundColor(.primary)
                             
                             Spacer()
                             
                             Text(state.rawValue)
                                 .font(.callout)
-                                .foregroundColor(.textTertiary)
+                                .foregroundColor(.secondary)
                             
                             if state.rawValue == selectedState {
                                 Image(systemName: "checkmark.circle.fill")
@@ -575,8 +607,10 @@ struct StatePickerSheet: View {
                         }
                         .padding(.vertical, 4)
                     }
+                    .listRowBackground(Color(uiColor: .secondarySystemGroupedBackground))
                 }
             }
+            .scrollContentBackground(.visible)
             .searchable(text: $searchText, prompt: "Search states")
             .navigationTitle("Select State")
             .navigationBarTitleDisplayMode(.inline)

@@ -10,7 +10,7 @@ struct QuestionView: View {
             Text(question.text)
                 .font(.title2)
                 .fontWeight(.bold)
-                .foregroundColor(.primary)
+                .foregroundColor(.textPrimary)
                 .padding(.bottom, 10)
             
             ForEach(0..<question.options.count, id: \.self) { index in
@@ -20,7 +20,7 @@ struct QuestionView: View {
                     HStack {
                         Text(question.options[index].text)
                             .font(.body)
-                            .foregroundColor(selectedOptionIndex == index ? .white : .primary)
+                            .foregroundColor(selectedOptionIndex == index ? .white : .textPrimary)
                         
                         Spacer()
                         
@@ -32,17 +32,17 @@ struct QuestionView: View {
                     .padding()
                     .background(
                         RoundedRectangle(cornerRadius: 12)
-                            .fill(selectedOptionIndex == index ? Color.blue : Color(UIColor.secondarySystemBackground))
+                            .fill(selectedOptionIndex == index ? Color.primaryPurple : Color.backgroundSecondary)
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: 12)
-                            .stroke(selectedOptionIndex == index ? Color.blue : Color.clear, lineWidth: 2)
+                            .stroke(selectedOptionIndex == index ? Color.primaryPurple : Color.borderPrimary, lineWidth: selectedOptionIndex == index ? 2 : 1)
                     )
                 }
                 .buttonStyle(PlainButtonStyle())
             }
         }
-        .padding()
+        .padding(.horizontal, 24)
     }
 }
 
