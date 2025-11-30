@@ -123,18 +123,6 @@ struct SignInView: View {
                         }
                         .padding(.horizontal, 24)
 
-                        // Demo Account
-                        ForsaButton(
-                            "Try Demo Account",
-                            style: .outline,
-                            size: .large
-                        ) {
-                            Task {
-                                await coordinator.createDemoAccount()
-                            }
-                        }
-                        .padding(.horizontal, 24)
-
                         // Biometric Sign In (if available)
                         ForsaButton(
                             "Sign in with Face ID",
@@ -154,7 +142,7 @@ struct SignInView: View {
                             .font(.callout)
                             .foregroundColor(.textSecondary)
 
-                        NavigationLink(destination: SignUpView()) {
+                        NavigationLink(destination: RegistrationFlowView()) {
                             Text("Sign up")
                                 .font(.callout)
                                 .fontWeight(.medium)

@@ -575,16 +575,16 @@ struct AgreementDetailSheet: View {
             
             Last Updated: November 2025
             
-            Welcome to Forsa. These Terms of Service govern your use of our mobile application and services.
+            Welcome to Fursa. These Terms of Service govern your use of our mobile application and services.
             
             1. Acceptance of Terms
-            By accessing or using Forsa, you agree to be bound by these Terms and all applicable laws and regulations.
+            By accessing or using Fursa, you agree to be bound by these Terms and all applicable laws and regulations.
             
             2. Account Registration
             You must provide accurate and complete information when creating an account. You are responsible for maintaining the confidentiality of your account credentials.
             
             3. Halal Investment Standards
-            Forsa provides investment services that comply with Islamic finance principles. We screen all investments for Sharia compliance using established guidelines.
+            Fursa provides investment services that comply with Islamic finance principles. We screen all investments for Sharia compliance using established guidelines.
             
             4. Investment Risks
             All investments carry risk. Past performance does not guarantee future results. You may lose some or all of your invested capital.
@@ -601,7 +601,7 @@ struct AgreementDetailSheet: View {
             
             Last Updated: November 2025
             
-            This Privacy Policy describes how Forsa collects, uses, and protects your personal information.
+            This Privacy Policy describes how Fursa collects, uses, and protects your personal information.
             
             1. Information We Collect
             - Personal identification information (name, email, phone, SSN)
@@ -630,7 +630,7 @@ struct AgreementDetailSheet: View {
             
             Last Updated: November 2025
             
-            This Account Agreement governs your brokerage account with Forsa.
+            This Account Agreement governs your brokerage account with Fursa.
             
             1. Account Type
             Your account is a self-directed brokerage account. You are responsible for all investment decisions.
@@ -656,10 +656,10 @@ struct AgreementDetailSheet: View {
             
             Last Updated: November 2025
             
-            This Customer Agreement sets forth the terms under which Forsa provides brokerage services.
+            This Customer Agreement sets forth the terms under which Fursa provides brokerage services.
             
             1. Brokerage Services
-            Forsa provides self-directed brokerage services for buying and selling securities.
+            Fursa provides self-directed brokerage services for buying and selling securities.
             
             2. Custody of Assets
             Your securities are held in custody by our clearing broker. Cash is held in FDIC-insured bank accounts.

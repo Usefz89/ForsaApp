@@ -8,6 +8,7 @@
 import SwiftUI
 import Combine
 
+@MainActor
 class AppCoordinator: ObservableObject {
     @Published var isAuthenticated = false
     @Published var currentUser: User?
@@ -772,7 +773,7 @@ struct SplashView: View {
                 }
 
                 VStack(spacing: 8) {
-                    Text("Forsa")
+                    Text("Fursa")
                         .font(.largeTitle)
                         .fontWeight(.bold)
                         .foregroundColor(.white)

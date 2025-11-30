@@ -1543,7 +1543,7 @@ class AlpacaTradingService: ObservableObject {
         }
         
         let body: [String: Any] = [
-            "name": "Forsa_\(portfolio.rawValue)",
+            "name": "Fursa_\(portfolio.rawValue)",
             "description": portfolio.description,
             "weights": weights,
             "cooldown_days": 1,  // Minimum days between rebalances
@@ -1583,7 +1583,7 @@ class AlpacaTradingService: ObservableObject {
     
     /// Gets existing rebalancing portfolio by name, or creates one if it doesn't exist
     func getOrCreateRebalancingPortfolio(portfolio: RiskLevel) async throws -> String {
-        let portfolioName = "Forsa_\(portfolio.rawValue)"
+        let portfolioName = "Fursa_\(portfolio.rawValue)"
         
         // First, try to find existing portfolio
         let url = URL(string: "\(rebalancingBaseURL)/portfolios")!

@@ -1707,6 +1707,167 @@ class RegistrationViewModel: ObservableObject {
         autoSaveTimer?.invalidate()
         sessionCheckTimer?.invalidate()
     }
+    
+    // MARK: - Demo Account Creation
+    
+    /// Whether demo account creation is in progress
+    @Published var isDemoAccountCreating: Bool = false
+    
+    /// Current step being processed during demo account creation
+    @Published var demoAccountCurrentStep: String = ""
+    
+    /// Progress of demo account creation (0.0 to 1.0)
+    @Published var demoAccountProgress: Double = 0.0
+    
+    /// Fills all registration data with random demo values and submits to sandbox
+    /// This creates a complete sandboxed Alpaca account for testing
+    func createDemoAccount() async {
+        await MainActor.run {
+            isDemoAccountCreating = true
+            demoAccountProgress = 0.0
+            demoAccountCurrentStep = "Generating profile..."
+        }
+        
+        // Generate random demo data
+        let demoData = DemoAccountGenerator.generate()
+        
+        await MainActor.run {
+            demoAccountProgress = 0.1
+            demoAccountCurrentStep = "Setting up account..."
+            
+            // Step 1: Basic Info
+            registrationData.firstName = demoData.firstName
+            registrationData.lastName = demoData.lastName
+            registrationData.email = demoData.email
+            registrationData.password = demoData.password
+            confirmPassword = demoData.password
+        }
+        
+        // Small delay for visual feedback
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        
+        await MainActor.run {
+            demoAccountProgress = 0.2
+            demoAccountCurrentStep = "Verifying phone..."
+            
+            // Step 2: Phone (mark as verified for demo)
+            registrationData.phoneNumber = demoData.phoneNumber
+            isPhoneVerified = true // Skip actual verification for demo
+            otpSent = true
+        }
+        
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        
+        await MainActor.run {
+            demoAccountProgress = 0.3
+            demoAccountCurrentStep = "Adding personal details..."
+            
+            // Step 3: Personal Details
+            registrationData.dateOfBirth = demoData.dateOfBirth
+            registrationData.citizenship = demoData.citizenship
+            registrationData.countryOfBirth = demoData.countryOfBirth
+        }
+        
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        
+        await MainActor.run {
+            demoAccountProgress = 0.4
+            demoAccountCurrentStep = "Setting address..."
+            
+            // Step 4: Address (Kuwait format)
+            registrationData.country = demoData.country
+            registrationData.area = demoData.area
+            registrationData.governorate = demoData.governorate
+            registrationData.block = demoData.block
+            registrationData.streetAddress = demoData.streetAddress
+            registrationData.building = demoData.building
+            registrationData.floor = demoData.floor
+            registrationData.apartmentUnit = demoData.apartmentUnit
+        }
+        
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        
+        await MainActor.run {
+            demoAccountProgress = 0.5
+            demoAccountCurrentStep = "Adding financial info..."
+            
+            // Step 5/6: Financial Profile
+            registrationData.taxId = demoData.taxId
+            registrationData.taxIdType = demoData.taxIdType
+            registrationData.countryOfTaxResidence = demoData.countryOfTaxResidence
+            registrationData.fundingSources = demoData.fundingSources
+            registrationData.employmentStatus = demoData.employmentStatus
+            registrationData.employer = demoData.employer
+            registrationData.occupation = demoData.occupation
+            registrationData.annualIncome = demoData.annualIncome
+            registrationData.netWorth = demoData.netWorth
+            registrationData.liquidNetWorth = demoData.liquidNetWorth
+            registrationData.investmentExperience = demoData.investmentExperience
+        }
+        
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        
+        await MainActor.run {
+            demoAccountProgress = 0.6
+            demoAccountCurrentStep = "Setting disclosures..."
+            
+            // Step 7: Disclosures (all false for demo - typical case)
+            registrationData.isControlPerson = false
+            registrationData.isAffiliatedWithExchange = false
+            registrationData.isPoliticallyExposed = false
+            registrationData.immediateFamilyExposed = false
+        }
+        
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        
+        await MainActor.run {
+            demoAccountProgress = 0.7
+            demoAccountCurrentStep = "Adding trusted contact..."
+            
+            // Step 8: Trusted Contact (optional, but add one for demo)
+            registrationData.trustedContactName = demoData.trustedContactName
+            registrationData.trustedContactEmail = demoData.trustedContactEmail
+            registrationData.trustedContactPhone = demoData.trustedContactPhone
+        }
+        
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        
+        await MainActor.run {
+            demoAccountProgress = 0.8
+            demoAccountCurrentStep = "Accepting agreements..."
+            
+            // Step 9: Agreements
+            registrationData.agreedToTerms = true
+            registrationData.agreedToPrivacy = true
+            registrationData.agreedToAccountAgreement = true
+            registrationData.agreedToCustomerAgreement = true
+            registrationData.agreedToMarginAgreement = true
+        }
+        
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        
+        await MainActor.run {
+            demoAccountProgress = 0.9
+            demoAccountCurrentStep = "Creating sandbox account..."
+            currentStep = .review // Move to final step
+        }
+        
+        // Submit to Alpaca sandbox
+        await submitRegistration()
+        
+        await MainActor.run {
+            demoAccountProgress = 1.0
+            demoAccountCurrentStep = registrationComplete ? "Account created!" : "Completing setup..."
+            isDemoAccountCreating = false
+        }
+    }
+    
+    /// Resets demo account creation state
+    func resetDemoAccountState() {
+        isDemoAccountCreating = false
+        demoAccountProgress = 0.0
+        demoAccountCurrentStep = ""
+    }
 }
 
 // MARK: - Step Progress Helpers
@@ -1920,7 +2081,7 @@ enum AccountStatusUIState {
         switch self {
         case .unknown: return "Checking Status..."
         case .pending: return "Account Under Review"
-        case .approved: return "Welcome to Forsa!"
+        case .approved: return "Welcome to Fursa!"
         case .rejected: return "Application Not Approved"
         case .actionRequired: return "Almost There"
         }
@@ -1964,5 +2125,200 @@ enum AccountStatusUIState {
         case .rejected: return .errorRed
         case .actionRequired: return .warningYellow
         }
+    }
+}
+
+// MARK: - Demo Account Generator
+
+/// Generates realistic random data for demo/sandbox account creation
+struct DemoAccountGenerator {
+    
+    /// Generated demo account data
+    struct DemoData {
+        // Basic Info
+        let firstName: String
+        let lastName: String
+        let email: String
+        let password: String
+        
+        // Phone
+        let phoneNumber: String
+        
+        // Personal
+        let dateOfBirth: Date
+        let citizenship: String
+        let countryOfBirth: String
+        
+        // Address (Kuwait)
+        let country: String
+        let area: String
+        let governorate: String
+        let block: String
+        let streetAddress: String
+        let building: String
+        let floor: String?
+        let apartmentUnit: String?
+        
+        // Financial
+        let taxId: String
+        let taxIdType: TaxIdType
+        let countryOfTaxResidence: String
+        let fundingSources: [FundingSource]
+        let employmentStatus: EmploymentStatus
+        let employer: String?
+        let occupation: String?
+        let annualIncome: IncomeRange
+        let netWorth: NetWorthRange
+        let liquidNetWorth: LiquidNetWorthRange
+        let investmentExperience: InvestmentExperience
+        
+        // Trusted Contact
+        let trustedContactName: String
+        let trustedContactEmail: String
+        let trustedContactPhone: String
+    }
+    
+    // MARK: - Name Data
+    
+    private static let kuwaitiFirstNames = [
+        "Ahmed", "Mohammed", "Abdullah", "Yousef", "Omar",
+        "Khalid", "Fahad", "Nasser", "Salem", "Faisal",
+        "Fatima", "Nora", "Sara", "Maryam", "Aisha",
+        "Layla", "Hessa", "Dalal", "Reem", "Dana"
+    ]
+    
+    private static let kuwaitiLastNames = [
+        "Al-Sabah", "Al-Khalid", "Al-Rashid", "Al-Mutairi", "Al-Shammari",
+        "Al-Dosari", "Al-Ajmi", "Al-Enezi", "Al-Harbi", "Al-Otaibi",
+        "Al-Subaie", "Al-Fahad", "Al-Salem", "Al-Hamad", "Al-Nasser"
+    ]
+    
+    private static let kuwaitAreas = [
+        "Salmiya", "Hawalli", "Jabriya", "Sharq", "Mishref",
+        "Salwa", "Bayan", "Rumaithiya", "Mangaf", "Fintas",
+        "Jahra", "Fahaheel", "Mahboula", "Sabah Al-Salem"
+    ]
+    
+    private static let kuwaitGovernorates = [
+        "Al Asimah", "Hawalli", "Al Farwaniyah", "Mubarak Al-Kabeer", "Al Ahmadi", "Al Jahra"
+    ]
+    
+    private static let occupations = [
+        "Software Engineer", "Business Analyst", "Marketing Manager",
+        "Financial Analyst", "Project Manager", "Doctor",
+        "Civil Engineer", "Architect", "Accountant",
+        "Consultant", "Sales Manager", "Teacher"
+    ]
+    
+    private static let companies = [
+        "Kuwait Petroleum Corporation", "National Bank of Kuwait", "Zain Kuwait",
+        "VIVA Telecom", "Kuwait Airways", "Al Ahli Bank",
+        "Gulf Bank", "Boubyan Bank", "Kuwait Finance House",
+        "Agility Logistics", "EQUATE Petrochemical"
+    ]
+    
+    // MARK: - Generation
+    
+    /// Generates a complete set of demo data with random values
+    static func generate() -> DemoData {
+        let firstName = kuwaitiFirstNames.randomElement()!
+        let lastName = kuwaitiLastNames.randomElement()!
+        let timestamp = Int(Date().timeIntervalSince1970)
+        let randomSuffix = Int.random(in: 1000...9999)
+        
+        // Generate unique email with timestamp to avoid duplicates
+        let email = "\(firstName.lowercased()).\(lastName.lowercased().replacingOccurrences(of: "-", with: "")).\(randomSuffix)@demo.forsa.app"
+        
+        // Generate a valid password
+        let password = "Demo\(randomSuffix)Pass!"
+        
+        // Generate Kuwait mobile number (8 digits starting with 5, 6, or 9)
+        let mobilePrefix = ["5", "6", "9"].randomElement()!
+        let mobileNumber = mobilePrefix + String(format: "%07d", Int.random(in: 0...9999999))
+        
+        // Generate date of birth (25-55 years old)
+        let yearsOld = Int.random(in: 25...55)
+        let calendar = Calendar.current
+        let dob = calendar.date(byAdding: .year, value: -yearsOld, to: Date())!
+        
+        // Generate Kuwait Civil ID (12 digits)
+        // Format: CYYMMDDSSSSG
+        // C = Century (2 for 1900s, 3 for 2000s)
+        // YYMMDD = Date of birth
+        // SSSS = Serial number
+        // G = Gender (odd for male, even for female)
+        let centuryDigit = yearsOld > 25 ? "2" : "3"
+        let dobFormatter = DateFormatter()
+        dobFormatter.dateFormat = "yyMMdd"
+        let dobString = dobFormatter.string(from: dob)
+        let serial = String(format: "%04d", Int.random(in: 0...9999))
+        let genderDigit = Int.random(in: 0...9)
+        let civilId = centuryDigit + dobString + serial + String(genderDigit)
+        
+        // Random area and matching governorate
+        let area = kuwaitAreas.randomElement()!
+        let governorate = kuwaitGovernorates.randomElement()!
+        
+        // Address details
+        let block = String(Int.random(in: 1...12))
+        let street = "Street \(Int.random(in: 1...50))"
+        let building = String(Int.random(in: 1...200))
+        let floor: String? = Bool.random() ? String(Int.random(in: 1...20)) : nil
+        let apt: String? = Bool.random() ? String(Int.random(in: 1...50)) : nil
+        
+        // Financial info
+        let employmentStatus: EmploymentStatus = [.employed, .selfEmployed].randomElement()!
+        let employer = employmentStatus == .employed ? companies.randomElement()! : "\(firstName) \(lastName)"
+        let occupation = occupations.randomElement()!
+        
+        // Random financial ranges
+        let incomes: [IncomeRange] = [.from50kTo100k, .from100kTo200k, .from200kTo500k]
+        let netWorths: [NetWorthRange] = [.from100kTo250k, .from250kTo500k, .from500kTo1m]
+        let liquidNetWorths: [LiquidNetWorthRange] = [.from50kTo100k, .from100kTo250k, .from250kTo500k]
+        let experiences: [InvestmentExperience] = [.limited, .good, .extensive]
+        
+        // Funding sources (1-3 random sources)
+        let allSources: [FundingSource] = [.employmentIncome, .savings, .investments, .businessIncome]
+        let sourceCount = Int.random(in: 1...3)
+        let fundingSources = Array(allSources.shuffled().prefix(sourceCount))
+        
+        // Trusted contact (generate different person)
+        let trustedFirstName = kuwaitiFirstNames.filter { $0 != firstName }.randomElement()!
+        let trustedLastName = kuwaitiLastNames.randomElement()!
+        let trustedMobilePrefix = ["5", "6", "9"].randomElement()!
+        let trustedMobile = trustedMobilePrefix + String(format: "%07d", Int.random(in: 0...9999999))
+        
+        return DemoData(
+            firstName: firstName,
+            lastName: lastName,
+            email: email,
+            password: password,
+            phoneNumber: mobileNumber,
+            dateOfBirth: dob,
+            citizenship: "KWT",
+            countryOfBirth: "KWT",
+            country: "KWT",
+            area: area,
+            governorate: governorate,
+            block: block,
+            streetAddress: street,
+            building: building,
+            floor: floor,
+            apartmentUnit: apt,
+            taxId: civilId,
+            taxIdType: .kuwaitCivilId,
+            countryOfTaxResidence: "KWT",
+            fundingSources: fundingSources,
+            employmentStatus: employmentStatus,
+            employer: employer,
+            occupation: occupation,
+            annualIncome: incomes.randomElement()!,
+            netWorth: netWorths.randomElement()!,
+            liquidNetWorth: liquidNetWorths.randomElement()!,
+            investmentExperience: experiences.randomElement()!,
+            trustedContactName: "\(trustedFirstName) \(trustedLastName)",
+            trustedContactEmail: "\(trustedFirstName.lowercased())@family.com",
+            trustedContactPhone: trustedMobile
+        )
     }
 }

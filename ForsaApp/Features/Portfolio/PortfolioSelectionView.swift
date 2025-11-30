@@ -9,25 +9,31 @@ import SwiftUI
 
 struct PortfolioSelectionView: View {
     let recommendedRisk: RiskLevel
+    let alternativePortfolios: [RiskLevel]
     let onSelect: (RiskLevel) -> Void
     
     @State private var selectedRisk: RiskLevel
     @State private var detailsRisk: RiskLevel // Non-optional to avoid nil issues
     @State private var showDetails = false
     @Environment(\.presentationMode) var presentationMode
-    @Environment(\.colorScheme) private var colorScheme
     
-    init(recommendedRisk: RiskLevel, onSelect: @escaping (RiskLevel) -> Void) {
+    init(recommendedRisk: RiskLevel, alternativePortfolios: [RiskLevel] = [], onSelect: @escaping (RiskLevel) -> Void) {
         self.recommendedRisk = recommendedRisk
+        self.alternativePortfolios = alternativePortfolios
         self.onSelect = onSelect
         _selectedRisk = State(initialValue: recommendedRisk)
         _detailsRisk = State(initialValue: recommendedRisk) // Initialize with recommended
     }
     
+    /// Check if a portfolio is an alternative (but not recommended)
+    private func isAlternative(_ risk: RiskLevel) -> Bool {
+        alternativePortfolios.contains(risk) && risk != recommendedRisk
+    }
+    
     var body: some View {
         NavigationView {
             ZStack(alignment: .bottom) {
-                Color(UIColor.systemBackground)
+                Color.backgroundPrimary
                     .ignoresSafeArea()
                 
                 ScrollView {
@@ -53,6 +59,7 @@ struct PortfolioSelectionView: View {
                                         risk: risk,
                                         isSelected: selectedRisk == risk,
                                         isRecommended: risk == recommendedRisk,
+                                        isAlternative: isAlternative(risk),
                                         onSelect: {
                                             selectedRisk = risk
                                         },
@@ -85,7 +92,7 @@ struct PortfolioSelectionView: View {
                     .padding()
                 }
                 .background(
-                    Color(UIColor.systemBackground)
+                    Color.backgroundPrimary
                         .opacity(0.95)
                         .ignoresSafeArea()
                 )
@@ -110,6 +117,7 @@ struct PortfolioSelectionCard: View {
     let risk: RiskLevel
     let isSelected: Bool
     let isRecommended: Bool
+    var isAlternative: Bool = false
     let onSelect: () -> Void
     let onInfoTapped: () -> Void
     
@@ -155,6 +163,14 @@ struct PortfolioSelectionCard: View {
                                 .padding(.vertical, 2)
                                 .background(Color.warningYellow.opacity(0.15))
                                 .cornerRadius(4)
+                        } else if isAlternative {
+                            Text("SUITABLE")
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundColor(.primaryGreen)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.primaryGreen.opacity(0.15))
+                                .cornerRadius(4)
                         }
                     }
                     
@@ -192,11 +208,11 @@ struct PortfolioSelectionCard: View {
                 .buttonStyle(PlainButtonStyle())
             }
             .padding(14)
-            .background(Color(UIColor.secondarySystemGroupedBackground))
+            .background(Color.backgroundSecondary)
             .cornerRadius(12)
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
-                    .stroke(isSelected ? risk.color : Color.borderPrimary, lineWidth: isSelected ? 2 : 1)
+                    .stroke(isSelected ? risk.color : (isAlternative ? risk.color.opacity(0.3) : Color.borderPrimary), lineWidth: isSelected ? 2 : 1)
             )
             .shadow(color: Color.shadowLight, radius: 2, x: 0, y: 1)
         }
@@ -207,7 +223,6 @@ struct PortfolioSelectionCard: View {
 struct RecommendedPortfolioCard: View {
     let risk: RiskLevel
     let action: () -> Void
-    @Environment(\.colorScheme) private var colorScheme
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -279,7 +294,7 @@ struct RecommendedPortfolioCard: View {
                 .foregroundColor(risk.color)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
-                .background(Color(UIColor.systemBackground))
+                .background(Color.backgroundPrimary)
                 .cornerRadius(10)
             }
             .padding(.top, 4)

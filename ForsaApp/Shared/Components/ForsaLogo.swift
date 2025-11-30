@@ -75,7 +75,7 @@ struct ForsaLogo: View {
 
     private var logoText: some View {
         VStack(alignment: .leading, spacing: size.textSpacing) {
-            Text("Forsa")
+            Text("Fursa")
                 .font(.system(size: size.titleSize, weight: .bold, design: .default))
                 .foregroundColor(.textPrimary)
 
@@ -188,7 +188,7 @@ struct AppIconView: View {
                 }
 
                 // App name
-                Text("Forsa")
+                Text("Fursa")
                     .font(.system(size: 16, weight: .bold, design: .default))
                     .foregroundColor(.white)
             }

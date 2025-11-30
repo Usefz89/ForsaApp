@@ -438,7 +438,7 @@ struct BankWireInstructionsCard: View {
     
     private let bankDetails = [
         ("Bank Name", "Kuwait Finance House (KFH)"),
-        ("Account Name", "Forsa Investment Company"),
+        ("Account Name", "Fursa Investment Company"),
         ("IBAN", "KW81CBKU0000000000001234560101"),
         ("SWIFT/BIC", "CBKUKWKW"),
         ("Reference", "FORSA-\(Int.random(in: 100000...999999))")

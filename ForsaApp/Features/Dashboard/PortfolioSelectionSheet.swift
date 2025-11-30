@@ -12,6 +12,8 @@ struct PortfolioSelectionSheet: View {
     let onSelect: (RiskLevel) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var selectedPortfolio: RiskLevel?
+    @State private var detailsRisk: RiskLevel?
+    @State private var showDetails = false
     
     init(currentPortfolio: RiskLevel?, onSelect: @escaping (RiskLevel) -> Void) {
         self.currentPortfolio = currentPortfolio
@@ -43,12 +45,17 @@ struct PortfolioSelectionSheet: View {
                             PortfolioOptionCard(
                                 risk: risk,
                                 isSelected: selectedPortfolio == risk,
-                                isCurrent: currentPortfolio == risk
-                            ) {
-                                withAnimation(.spring(response: 0.3)) {
-                                    selectedPortfolio = risk
+                                isCurrent: currentPortfolio == risk,
+                                onSelect: {
+                                    withAnimation(.spring(response: 0.3)) {
+                                        selectedPortfolio = risk
+                                    }
+                                },
+                                onInfoTapped: {
+                                    detailsRisk = risk
+                                    showDetails = true
                                 }
-                            }
+                            )
                         }
                     }
                     .padding(.horizontal, 20)
@@ -96,6 +103,11 @@ struct PortfolioSelectionSheet: View {
                 .padding(.vertical, 16)
                 .background(Color.backgroundPrimary)
             }
+            .sheet(isPresented: $showDetails) {
+                if let risk = detailsRisk {
+                    PortfolioDetailView(risk: risk)
+                }
+            }
         }
     }
 }
@@ -106,10 +118,11 @@ struct PortfolioOptionCard: View {
     let risk: RiskLevel
     let isSelected: Bool
     let isCurrent: Bool
-    let action: () -> Void
+    let onSelect: () -> Void
+    let onInfoTapped: () -> Void
     
     var body: some View {
-        Button(action: action) {
+        Button(action: onSelect) {
             VStack(spacing: 12) {
                 HStack(spacing: 12) {
                     // Selection indicator
@@ -161,6 +174,14 @@ struct PortfolioOptionCard: View {
                     }
                     
                     Spacer()
+                    
+                    // Info Button
+                    Button(action: onInfoTapped) {
+                        Image(systemName: "info.circle.fill")
+                            .font(.title3)
+                            .foregroundColor(risk.color.opacity(0.8))
+                    }
+                    .buttonStyle(PlainButtonStyle())
                 }
                 
                 // Stats Row
@@ -188,7 +209,7 @@ struct PortfolioOptionCard: View {
                 }
             }
             .padding(16)
-            .background(Color.backgroundCard)
+            .background(Color.backgroundSecondary)
             .cornerRadius(12)
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
@@ -224,7 +245,7 @@ struct StatBadge: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 6)
-        .background(Color.backgroundSecondary)
+        .background(Color.backgroundTertiary)
         .cornerRadius(6)
     }
 }

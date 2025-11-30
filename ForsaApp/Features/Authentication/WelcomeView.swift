@@ -65,6 +65,26 @@ struct WelcomeView: View {
                             .background(Color.white)
                             .cornerRadius(12)
                     }
+                    
+                    // Demo Account Button
+                    NavigationLink(destination: DemoAccountFlowView()) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 16, weight: .semibold))
+                            Text("Try Demo Account")
+                                .font(.buttonMedium)
+                                .fontWeight(.semibold)
+                        }
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 48)
+                        .background(Color.white.opacity(0.2))
+                        .cornerRadius(12)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color.white.opacity(0.4), lineWidth: 1)
+                        )
+                    }
 
                     NavigationLink(destination: SignInView()) {
                         Text("I already have an account")
