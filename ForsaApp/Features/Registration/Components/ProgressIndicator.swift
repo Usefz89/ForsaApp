@@ -324,3 +324,4 @@ struct SegmentedProgressBar: View {
     .padding()
 }
 
+
