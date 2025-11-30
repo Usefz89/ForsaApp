@@ -8,9 +8,14 @@
 import SwiftUI
 
 /// Step 1: Create Account - Email, password, and name
+/// First step in the registration flow focusing on basic account credentials
 struct Step1_CreateAccountView: View {
     @ObservedObject var viewModel: RegistrationViewModel
     @FocusState private var focusedField: Field?
+    
+    // MARK: - Animation Constants
+    private let springAnimation = Animation.spring(response: 0.4, dampingFraction: 0.8)
+    private let impactFeedback = UIImpactFeedbackGenerator(style: .light)
     
     enum Field: Hashable {
         case firstName, lastName, email, password, confirmPassword
@@ -21,7 +26,8 @@ struct Step1_CreateAccountView: View {
             buttonTitle: "Continue",
             isButtonDisabled: !isFormValid,
             onPrimaryTap: {
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                impactFeedback.impactOccurred()
+                withAnimation(springAnimation) {
                     viewModel.nextStep()
                 }
             }
@@ -29,6 +35,8 @@ struct Step1_CreateAccountView: View {
             VStack(spacing: 28) {
                 // Welcome header with icon
                 welcomeHeader
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("Let's get started. Create your account to begin your halal investment journey")
                 
                 // Name fields
                 nameFields
@@ -42,8 +50,13 @@ struct Step1_CreateAccountView: View {
                 // Validation errors
                 if let errors = viewModel.stepValidationErrors[.basicInfo], !errors.isEmpty {
                     ValidationErrorCard(errors: errors)
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .top).combined(with: .opacity),
+                            removal: .opacity
+                        ))
                 }
             }
+            .animation(springAnimation, value: viewModel.stepValidationErrors[.basicInfo]?.isEmpty ?? true)
         }
     }
     
@@ -86,33 +99,47 @@ struct Step1_CreateAccountView: View {
     private var nameFields: some View {
         VStack(alignment: .leading, spacing: 16) {
             // First Name
-                VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 4) {
                     Text("First Name")
                         .font(.inputLabel)
                         .foregroundColor(.textPrimary)
-                    
-                    TextField("First name", text: $viewModel.registrationData.firstName)
-                        .textFieldStyle(ForsaTextFieldStyle(isFocused: focusedField == .firstName))
-                        .textInputAutocapitalization(.words)
-                        .textContentType(.givenName)
-                        .focused($focusedField, equals: .firstName)
-                        .submitLabel(.next)
-                        .onSubmit { focusedField = .lastName }
+                    Text("*")
+                        .font(.inputLabel)
+                        .foregroundColor(.errorRed)
                 }
                 
+                TextField("First name", text: $viewModel.registrationData.firstName)
+                    .textFieldStyle(ForsaTextFieldStyle(isFocused: focusedField == .firstName))
+                    .textInputAutocapitalization(.words)
+                    .textContentType(.givenName)
+                    .focused($focusedField, equals: .firstName)
+                    .submitLabel(.next)
+                    .onSubmit { focusedField = .lastName }
+                    .accessibilityLabel("First name, required")
+                    .accessibilityValue(viewModel.registrationData.firstName.isEmpty ? "Empty" : viewModel.registrationData.firstName)
+            }
+            
             // Last Name
-                VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 4) {
                     Text("Last Name")
                         .font(.inputLabel)
                         .foregroundColor(.textPrimary)
-                    
-                    TextField("Last name", text: $viewModel.registrationData.lastName)
-                        .textFieldStyle(ForsaTextFieldStyle(isFocused: focusedField == .lastName))
-                        .textInputAutocapitalization(.words)
-                        .textContentType(.familyName)
-                        .focused($focusedField, equals: .lastName)
-                        .submitLabel(.next)
-                        .onSubmit { focusedField = .email }
+                    Text("*")
+                        .font(.inputLabel)
+                        .foregroundColor(.errorRed)
+                }
+                
+                TextField("Last name", text: $viewModel.registrationData.lastName)
+                    .textFieldStyle(ForsaTextFieldStyle(isFocused: focusedField == .lastName))
+                    .textInputAutocapitalization(.words)
+                    .textContentType(.familyName)
+                    .focused($focusedField, equals: .lastName)
+                    .submitLabel(.next)
+                    .onSubmit { focusedField = .email }
+                    .accessibilityLabel("Last name, required")
+                    .accessibilityValue(viewModel.registrationData.lastName.isEmpty ? "Empty" : viewModel.registrationData.lastName)
             }
         }
     }
@@ -121,14 +148,20 @@ struct Step1_CreateAccountView: View {
     
     private var emailField: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Email Address")
-                .font(.inputLabel)
-                .foregroundColor(.textPrimary)
+            HStack(spacing: 4) {
+                Text("Email Address")
+                    .font(.inputLabel)
+                    .foregroundColor(.textPrimary)
+                Text("*")
+                    .font(.inputLabel)
+                    .foregroundColor(.errorRed)
+            }
             
             HStack(spacing: 12) {
                 Image(systemName: "envelope.fill")
                     .font(.system(size: 16))
                     .foregroundColor(.textTertiary)
+                    .accessibilityHidden(true)
                 
                 TextField("you@example.com", text: $viewModel.registrationData.email)
                     .font(.inputText)
@@ -147,8 +180,11 @@ struct Step1_CreateAccountView: View {
             .cornerRadius(12)
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
-                    .stroke(focusedField == .email ? Color.primaryPurple : Color.borderPrimary, lineWidth: focusedField == .email ? 2 : 1)
+                    .stroke(emailBorderColor, lineWidth: focusedField == .email ? 2 : 1)
             )
+            .accessibilityLabel("Email address, required")
+            .accessibilityValue(viewModel.registrationData.email.isEmpty ? "Empty" : viewModel.registrationData.email)
+            .accessibilityHint(!viewModel.registrationData.email.isEmpty && !isValidEmail ? "Invalid email format" : "Enter your email address")
             
             if !viewModel.registrationData.email.isEmpty && !isValidEmail {
                 HStack(spacing: 4) {
@@ -158,8 +194,18 @@ struct Step1_CreateAccountView: View {
                         .font(.caption1)
                 }
                 .foregroundColor(.errorRed)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+                .accessibilityLabel("Error: Please enter a valid email address")
             }
         }
+        .animation(springAnimation, value: isValidEmail)
+    }
+    
+    private var emailBorderColor: Color {
+        if !viewModel.registrationData.email.isEmpty && !isValidEmail {
+            return .errorRed
+        }
+        return focusedField == .email ? .primaryPurple : .borderPrimary
     }
     
     // MARK: - Password Fields
@@ -490,9 +536,32 @@ struct ValidationErrorCard: View {
     }
 }
 
-// MARK: - Preview
+// MARK: - Previews
 
-#Preview {
+#Preview("Create Account - Empty") {
     Step1_CreateAccountView(viewModel: RegistrationViewModel())
 }
+
+#Preview("Create Account - Filled") {
+    Step1_CreateAccountView(viewModel: {
+        let vm = RegistrationViewModel()
+        vm.registrationData.firstName = "Ahmed"
+        vm.registrationData.lastName = "Al-Khalid"
+        vm.registrationData.email = "ahmed@example.com"
+        vm.registrationData.password = "SecurePass123"
+        vm.confirmPassword = "SecurePass123"
+        return vm
+    }())
+}
+
+#Preview("Password Strength Indicator") {
+    VStack(spacing: 20) {
+        PasswordStrengthIndicator(password: "")
+        PasswordStrengthIndicator(password: "weak")
+        PasswordStrengthIndicator(password: "Stronger1")
+        PasswordStrengthIndicator(password: "VeryStrong1!")
+    }
+    .padding()
+}
+
 

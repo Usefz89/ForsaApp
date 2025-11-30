@@ -8,6 +8,7 @@
 import SwiftUI
 
 /// Step 6: Financial Profile - Tax ID, Employment, income, net worth, funding sources
+/// Collects financial information for KYC compliance and investment suitability
 struct Step6_FinancialProfileView: View {
     @ObservedObject var viewModel: RegistrationViewModel
     
@@ -22,6 +23,11 @@ struct Step6_FinancialProfileView: View {
     /// Timer for auto-masking Civil ID after inactivity
     @State private var autoMaskTimer: Timer?
     private let autoMaskDelay: TimeInterval = 2.0
+    
+    // MARK: - Animation & Feedback
+    private let springAnimation = Animation.spring(response: 0.4, dampingFraction: 0.8)
+    private let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+    private let selectionFeedback = UISelectionFeedbackGenerator()
     
     enum Field: Hashable {
         case employer, jobTitle, civilId
@@ -51,7 +57,8 @@ struct Step6_FinancialProfileView: View {
             buttonTitle: "Continue",
             isButtonDisabled: !isFormValid,
             onPrimaryTap: {
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                impactFeedback.impactOccurred()
+                withAnimation(springAnimation) {
                     viewModel.nextStep()
                 }
             }
@@ -59,6 +66,8 @@ struct Step6_FinancialProfileView: View {
             VStack(spacing: 28) {
                 // Header
                 financialHeader
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("Financial Profile. Help us understand your financial situation to provide better investment recommendations.")
                 
                 // Tax ID Section (Civil ID for Kuwait)
                 taxIdSection
@@ -695,9 +704,30 @@ struct NetWorthPickerSheet: View {
     }
 }
 
-// MARK: - Preview
+// MARK: - Previews
 
-#Preview {
+#Preview("Financial Profile - Empty") {
     Step6_FinancialProfileView(viewModel: RegistrationViewModel())
+}
+
+#Preview("Financial Profile - Filled") {
+    Step6_FinancialProfileView(viewModel: {
+        let vm = RegistrationViewModel()
+        vm.registrationData.taxId = "123456789012"
+        vm.registrationData.employmentStatus = .employed
+        vm.registrationData.employer = "Tech Company"
+        vm.registrationData.occupation = "Software Engineer"
+        vm.registrationData.annualIncome = .from50kTo100k
+        vm.registrationData.fundingSources = [.employmentIncome, .savings]
+        return vm
+    }())
+}
+
+#Preview("Employment Picker") {
+    EmploymentPickerSheet(selectedStatus: .constant(.employed))
+}
+
+#Preview("Income Picker") {
+    IncomePickerSheet(selectedIncome: .constant(.from50kTo100k))
 }
 

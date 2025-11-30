@@ -8,13 +8,18 @@
 import SwiftUI
 
 /// Step 4: Home Address - Street address, city, governorate/state, postal code, country
-/// Optimized for Kuwait customers
+/// Optimized for Kuwait customers with localized address format
 struct Step4_AddressView: View {
     @ObservedObject var viewModel: RegistrationViewModel
     
     @State private var showGovernoratePicker = false
     @State private var showCountryPicker = false
     @FocusState private var focusedField: Field?
+    
+    // MARK: - Animation & Feedback
+    private let springAnimation = Animation.spring(response: 0.4, dampingFraction: 0.8)
+    private let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+    private let selectionFeedback = UISelectionFeedbackGenerator()
     
     enum Field: Hashable {
         case street, unit, city, zip
@@ -32,7 +37,8 @@ struct Step4_AddressView: View {
             buttonTitle: "Continue",
             isButtonDisabled: !isFormValid,
             onPrimaryTap: {
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                impactFeedback.impactOccurred()
+                withAnimation(springAnimation) {
                     viewModel.nextStep()
                 }
             }
@@ -40,12 +46,15 @@ struct Step4_AddressView: View {
             VStack(spacing: 28) {
                 // Header
                 addressHeader
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("Home Address. Enter your current residential address. This is required for regulatory compliance.")
                 
                 // Address form
                 addressForm
                 
-                // Auto-fill suggestion (mock)
+                // Auto-fill suggestion
                 autoFillSuggestion
+                    .accessibilityLabel("Use saved address. Tap to auto-fill from your device")
             }
         }
     }
@@ -624,9 +633,38 @@ struct StatePickerSheet: View {
     }
 }
 
-// MARK: - Preview
+// MARK: - Previews
 
-#Preview {
-    Step4_AddressView(viewModel: RegistrationViewModel())
+#Preview("Address - Kuwait") {
+    Step4_AddressView(viewModel: {
+        let vm = RegistrationViewModel()
+        vm.registrationData.country = "KWT"
+        return vm
+    }())
+}
+
+#Preview("Address - Kuwait Filled") {
+    Step4_AddressView(viewModel: {
+        let vm = RegistrationViewModel()
+        vm.registrationData.country = "KWT"
+        vm.registrationData.area = "Salmiya"
+        vm.registrationData.governorate = "Hawalli"
+        vm.registrationData.block = "5"
+        vm.registrationData.streetAddress = "Street 10"
+        vm.registrationData.building = "12"
+        return vm
+    }())
+}
+
+#Preview("Address - US") {
+    Step4_AddressView(viewModel: {
+        let vm = RegistrationViewModel()
+        vm.registrationData.country = "USA"
+        return vm
+    }())
+}
+
+#Preview("Governorate Picker") {
+    GovernoratePickerSheet(selectedGovernorate: .constant("Hawalli"))
 }
 

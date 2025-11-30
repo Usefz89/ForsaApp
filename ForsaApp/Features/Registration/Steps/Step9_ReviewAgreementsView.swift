@@ -8,6 +8,7 @@
 import SwiftUI
 
 /// Step 9: Review & Agreements - Review information and accept terms
+/// Final review step before account creation with legal agreements
 struct Step9_ReviewAgreementsView: View {
     @ObservedObject var viewModel: RegistrationViewModel
     
@@ -16,6 +17,11 @@ struct Step9_ReviewAgreementsView: View {
     @State private var showPrivacySheet = false
     @State private var showAccountSheet = false
     @State private var showCustomerSheet = false
+    
+    // MARK: - Animation & Feedback
+    private let springAnimation = Animation.spring(response: 0.4, dampingFraction: 0.8)
+    private let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+    private let successFeedback = UINotificationFeedbackGenerator()
     
     enum ReviewSection: String, CaseIterable {
         case personal = "Personal Information"
@@ -30,8 +36,12 @@ struct Step9_ReviewAgreementsView: View {
             isButtonDisabled: !allAgreementsAccepted,
             isLoading: viewModel.isLoading,
             onPrimaryTap: {
+                impactFeedback.impactOccurred()
                 Task {
                     await viewModel.submitRegistration()
+                    if viewModel.registrationComplete {
+                        successFeedback.notificationOccurred(.success)
+                    }
                 }
             }
         ) {
@@ -251,7 +261,8 @@ struct Step9_ReviewAgreementsView: View {
     }
     
     private func acceptAllAgreements() {
-        withAnimation(.spring(response: 0.3)) {
+        impactFeedback.impactOccurred()
+        withAnimation(springAnimation) {
             viewModel.registrationData.agreedToTerms = true
             viewModel.registrationData.agreedToPrivacy = true
             viewModel.registrationData.agreedToAccountAgreement = true
@@ -668,9 +679,43 @@ struct AgreementDetailSheet: View {
     }
 }
 
-// MARK: - Preview
+// MARK: - Previews
 
-#Preview {
+#Preview("Review - Empty") {
     Step9_ReviewAgreementsView(viewModel: RegistrationViewModel())
+}
+
+#Preview("Review - With Data") {
+    Step9_ReviewAgreementsView(viewModel: {
+        let vm = RegistrationViewModel()
+        vm.registrationData.firstName = "Ahmed"
+        vm.registrationData.lastName = "Al-Khalid"
+        vm.registrationData.email = "ahmed@example.com"
+        vm.registrationData.phoneNumber = "99887766"
+        vm.registrationData.country = "KWT"
+        vm.registrationData.area = "Salmiya"
+        vm.registrationData.governorate = "Hawalli"
+        return vm
+    }())
+}
+
+#Preview("Review - All Agreed") {
+    Step9_ReviewAgreementsView(viewModel: {
+        let vm = RegistrationViewModel()
+        vm.registrationData.agreedToTerms = true
+        vm.registrationData.agreedToPrivacy = true
+        vm.registrationData.agreedToAccountAgreement = true
+        vm.registrationData.agreedToCustomerAgreement = true
+        return vm
+    }())
+}
+
+#Preview("Agreement Row") {
+    AgreementRow(
+        title: "Terms of Service",
+        isAccepted: .constant(true),
+        onViewTap: {}
+    )
+    .padding()
 }
 

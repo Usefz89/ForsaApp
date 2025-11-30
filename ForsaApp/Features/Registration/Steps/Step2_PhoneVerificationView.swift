@@ -8,6 +8,7 @@
 import SwiftUI
 
 /// Step 2: Phone Verification - Phone number with country picker and OTP verification
+/// Handles SMS/Voice call verification with Twilio integration
 struct Step2_PhoneVerificationView: View {
     @ObservedObject var viewModel: RegistrationViewModel
     
@@ -28,6 +29,11 @@ struct Step2_PhoneVerificationView: View {
     @State private var shakeOffset: CGFloat = 0
     @State private var isShaking = false
     @FocusState private var phoneFieldFocused: Bool
+    
+    // MARK: - Animation & Feedback Constants
+    private let springAnimation = Animation.spring(response: 0.4, dampingFraction: 0.8)
+    private let successFeedback = UINotificationFeedbackGenerator()
+    private let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
     
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     
@@ -106,8 +112,9 @@ struct Step2_PhoneVerificationView: View {
         }
         .onChange(of: viewModel.isPhoneVerified) { _, isVerified in
             if isVerified {
-                // Auto-proceed when verification successful
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                // Success haptic and auto-proceed
+                successFeedback.notificationOccurred(.success)
+                withAnimation(springAnimation) {
                     viewModel.nextStep()
                 }
             }
@@ -395,17 +402,20 @@ struct Step2_PhoneVerificationView: View {
                     OTPDigitBox(
                         digit: getDigit(at: index),
                         isFocused: otpCode.count == index && otpFocused,
-                        // UI-4 FIX: Only show error state when we have a full code AND error AND not shaking
-                        // The shake animation handles the visual feedback, then we clear
                         hasError: viewModel.verificationError != nil && otpCode.count == 6 && !isShaking,
                         isShaking: isShaking
                     )
                 }
             }
-            .offset(x: shakeOffset) // Apply shake animation offset
+            .offset(x: shakeOffset)
             .onTapGesture {
+                impactFeedback.impactOccurred(intensity: 0.5)
                 otpFocused = true
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Verification code input")
+            .accessibilityValue(otpCode.isEmpty ? "Empty" : "Entered \(otpCode.count) of 6 digits")
+            .accessibilityHint("Double tap to enter your 6-digit verification code")
             
             // Hidden text field for input
             TextField("", text: $otpCode)
@@ -415,8 +425,7 @@ struct Step2_PhoneVerificationView: View {
                 .opacity(0)
                 .frame(width: 0, height: 0)
                 .onChange(of: otpCode) { oldValue, newValue in
-                    // UI-2 FIX: Only clear error when user starts fresh (going from 6 to fewer digits)
-                    // This prevents error from disappearing too quickly on first keystroke
+                    // Clear error when user starts fresh
                     if viewModel.verificationError != nil && oldValue.count == 6 && newValue.count < 6 {
                         viewModel.verificationError = nil
                     }
@@ -430,11 +439,17 @@ struct Step2_PhoneVerificationView: View {
                     } else {
                         otpCode = filtered
                     }
+                    
+                    // Provide haptic feedback for each digit entered
+                    if filtered.count > oldValue.filter({ $0.isNumber }).count {
+                        impactFeedback.impactOccurred(intensity: 0.3)
+                    }
                 }
             
-            // UI-1: Remaining attempts indicator
+            // Remaining attempts indicator
             if viewModel.otpRemainingAttempts < 3 && viewModel.otpRemainingAttempts > 0 {
                 remainingAttemptsIndicator
+                    .accessibilityLabel("\(viewModel.otpRemainingAttempts) verification attempts remaining")
             }
             
             // Resend code section
@@ -442,7 +457,8 @@ struct Step2_PhoneVerificationView: View {
             
             // Change number button
             Button(action: {
-                withAnimation(.spring(response: 0.3)) {
+                impactFeedback.impactOccurred()
+                withAnimation(springAnimation) {
                     viewModel.resetPhoneVerification()
                     otpCode = ""
                     canResend = true
@@ -455,6 +471,8 @@ struct Step2_PhoneVerificationView: View {
                     .underline()
             }
             .disabled(viewModel.isSendingOTP || viewModel.isVerifyingOTP)
+            .accessibilityLabel("Change phone number")
+            .accessibilityHint("Returns to phone number entry")
         }
         .onAppear {
             otpFocused = true
@@ -800,9 +818,28 @@ struct CountryPickerSheet: View {
     }
 }
 
-// MARK: - Preview
+// MARK: - Previews
 
-#Preview {
+#Preview("Phone Entry") {
     Step2_PhoneVerificationView(viewModel: RegistrationViewModel())
+}
+
+#Preview("OTP Entry") {
+    Step2_PhoneVerificationView(viewModel: {
+        let vm = RegistrationViewModel()
+        vm.registrationData.phoneNumber = "99887766"
+        vm.otpSent = true
+        return vm
+    }())
+}
+
+#Preview("OTP Digit Box States") {
+    HStack(spacing: 8) {
+        OTPDigitBox(digit: "1", isFocused: false)
+        OTPDigitBox(digit: "", isFocused: true)
+        OTPDigitBox(digit: "3", isFocused: false, hasError: true)
+        OTPDigitBox(digit: "", isFocused: false)
+    }
+    .padding()
 }
 

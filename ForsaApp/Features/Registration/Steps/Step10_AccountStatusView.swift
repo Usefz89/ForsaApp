@@ -8,7 +8,7 @@
 import SwiftUI
 
 /// Step 10: Account Status - Success/pending screen after account creation
-/// Polls Alpaca for real-time account status updates
+/// Polls Alpaca for real-time account status updates with celebratory animations
 struct Step10_AccountStatusView: View {
     @ObservedObject var viewModel: RegistrationViewModel
     @EnvironmentObject var coordinator: AppCoordinator
@@ -17,6 +17,11 @@ struct Step10_AccountStatusView: View {
     @State private var showConfetti = false
     @State private var animationProgress: CGFloat = 0
     @State private var rotationAngle: Double = 0
+    
+    // MARK: - Animation & Feedback
+    private let springAnimation = Animation.spring(response: 0.5, dampingFraction: 0.8)
+    private let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+    private let successFeedback = UINotificationFeedbackGenerator()
     
     /// Computed status from view model
     private var status: AccountStatusUIState {
@@ -90,8 +95,9 @@ struct Step10_AccountStatusView: View {
     private func handleStatusChange(_ newStatus: AccountStatusUIState) {
         switch newStatus {
         case .approved:
-            // Show celebration!
-            withAnimation(.spring(response: 0.5)) {
+            // Success haptic and celebration!
+            successFeedback.notificationOccurred(.success)
+            withAnimation(springAnimation) {
                 showConfetti = true
             }
             
@@ -102,8 +108,16 @@ struct Step10_AccountStatusView: View {
                 }
             }
             
-        case .rejected, .actionRequired:
-            // Stop rotation animation
+        case .rejected:
+            // Error haptic feedback
+            let errorFeedback = UINotificationFeedbackGenerator()
+            errorFeedback.notificationOccurred(.error)
+            rotationAngle = 0
+            
+        case .actionRequired:
+            // Warning haptic feedback
+            let warningFeedback = UINotificationFeedbackGenerator()
+            warningFeedback.notificationOccurred(.warning)
             rotationAngle = 0
             
         default:
@@ -630,9 +644,45 @@ struct ConfettiParticle: Identifiable {
     var animationDuration: Double = 2
 }
 
-// MARK: - Preview
+// MARK: - Previews
 
-#Preview {
-    Step10_AccountStatusView(viewModel: RegistrationViewModel())
-        .environmentObject(AppCoordinator())
+#Preview("Account Status - Pending") {
+    Step10_AccountStatusView(viewModel: {
+        let vm = RegistrationViewModel()
+        vm.registrationComplete = true
+        vm.createdAccountId = "test-account-123"
+        return vm
+    }())
+    .environmentObject(AppCoordinator())
+}
+
+#Preview("Account Status - Approved") {
+    Step10_AccountStatusView(viewModel: {
+        let vm = RegistrationViewModel()
+        vm.registrationComplete = true
+        vm.createdAccountId = "test-account-123"
+        vm.accountStatusResult = AlpacaAccountCreationResult(
+            accountId: "test-account-123",
+            status: .approved,
+            account: nil,
+            requiredActions: [],
+            rejectionReasons: nil,
+            message: "Your account has been approved"
+        )
+        return vm
+    }())
+    .environmentObject(AppCoordinator())
+}
+
+#Preview("Status Info Row") {
+    VStack(spacing: 12) {
+        StatusInfoRow(number: 1, text: "Completed step", isComplete: true)
+        StatusInfoRow(number: 2, text: "Current step", isComplete: false)
+        StatusInfoRow(number: 3, text: "Pending step", isComplete: false)
+    }
+    .padding()
+}
+
+#Preview("Confetti View") {
+    ConfettiView()
 }

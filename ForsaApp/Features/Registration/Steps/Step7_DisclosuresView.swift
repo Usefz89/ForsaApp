@@ -8,6 +8,7 @@
 import SwiftUI
 
 /// Step 7: Regulatory Disclosures - Control person, FINRA affiliation, politically exposed
+/// Required SEC/FINRA disclosures for brokerage account opening
 struct Step7_DisclosuresView: View {
     @ObservedObject var viewModel: RegistrationViewModel
     
@@ -15,12 +16,17 @@ struct Step7_DisclosuresView: View {
     @State private var showAffiliationInfo = false
     @State private var showPoliticalInfo = false
     
+    // MARK: - Animation & Feedback
+    private let springAnimation = Animation.spring(response: 0.4, dampingFraction: 0.8)
+    private let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+    
     var body: some View {
         RegistrationStepContainer(
             buttonTitle: "Continue",
             isButtonDisabled: !isFormValid,
             onPrimaryTap: {
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                impactFeedback.impactOccurred()
+                withAnimation(springAnimation) {
                     viewModel.nextStep()
                 }
             }
@@ -446,9 +452,30 @@ struct RelationshipOptionButton: View {
     }
 }
 
-// MARK: - Preview
+// MARK: - Previews
 
-#Preview {
+#Preview("Disclosures - Default") {
     Step7_DisclosuresView(viewModel: RegistrationViewModel())
+}
+
+#Preview("Disclosures - With Selections") {
+    Step7_DisclosuresView(viewModel: {
+        let vm = RegistrationViewModel()
+        vm.registrationData.isControlPerson = true
+        vm.registrationData.controlPersonContext = "CEO of ABC Corp"
+        return vm
+    }())
+}
+
+#Preview("Disclosure Card") {
+    DisclosureCard(
+        title: "Control Person",
+        description: "Are you a director, officer, or 10%+ shareholder?",
+        isChecked: .constant(true),
+        showInfo: .constant(false),
+        infoTitle: "Info",
+        infoText: "Details here"
+    )
+    .padding()
 }
 

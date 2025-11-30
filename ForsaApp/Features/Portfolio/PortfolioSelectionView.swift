@@ -15,6 +15,7 @@ struct PortfolioSelectionView: View {
     @State private var detailsRisk: RiskLevel // Non-optional to avoid nil issues
     @State private var showDetails = false
     @Environment(\.presentationMode) var presentationMode
+    @Environment(\.colorScheme) private var colorScheme
     
     init(recommendedRisk: RiskLevel, onSelect: @escaping (RiskLevel) -> Void) {
         self.recommendedRisk = recommendedRisk
@@ -26,6 +27,9 @@ struct PortfolioSelectionView: View {
     var body: some View {
         NavigationView {
             ZStack(alignment: .bottom) {
+                Color(UIColor.systemBackground)
+                    .ignoresSafeArea()
+                
                 ScrollView {
                     VStack(spacing: 24) {
                         // Recommended Portfolio Card
@@ -48,10 +52,15 @@ struct PortfolioSelectionView: View {
                                     PortfolioSelectionCard(
                                         risk: risk,
                                         isSelected: selectedRisk == risk,
-                                        isRecommended: risk == recommendedRisk
-                                    ) {
-                                        selectedRisk = risk
-                                    }
+                                        isRecommended: risk == recommendedRisk,
+                                        onSelect: {
+                                            selectedRisk = risk
+                                        },
+                                        onInfoTapped: {
+                                            detailsRisk = risk
+                                            showDetails = true
+                                        }
+                                    )
                                 }
                             }
                         }
@@ -70,12 +79,16 @@ struct PortfolioSelectionView: View {
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
                             .padding()
-                            .background(Color.primaryPurple) // Keeping existing app color
+                            .background(Color.primaryPurple)
                             .cornerRadius(12)
                     }
                     .padding()
                 }
-                .background(Color.white.opacity(0.9).ignoresSafeArea())
+                .background(
+                    Color(UIColor.systemBackground)
+                        .opacity(0.95)
+                        .ignoresSafeArea()
+                )
             }
             .navigationBarTitle("Choose Portfolio", displayMode: .inline)
             .toolbar {
@@ -97,109 +110,104 @@ struct PortfolioSelectionCard: View {
     let risk: RiskLevel
     let isSelected: Bool
     let isRecommended: Bool
-    let action: () -> Void
-    @State private var showDetails = false
+    let onSelect: () -> Void
+    let onInfoTapped: () -> Void
     
     var body: some View {
-        VStack(spacing: 0) {
-            Button(action: action) {
-                HStack(alignment: .center, spacing: 16) {
-                    // Radio Button
-                    ZStack {
+        Button(action: onSelect) {
+            HStack(alignment: .center, spacing: 12) {
+                // Radio Button
+                ZStack {
+                    Circle()
+                        .stroke(isSelected ? risk.color : Color.borderPrimary, lineWidth: 2)
+                        .frame(width: 24, height: 24)
+                    
+                    if isSelected {
                         Circle()
-                            .stroke(isSelected ? risk.color : Color.borderPrimary, lineWidth: 2)
-                            .frame(width: 24, height: 24)
+                            .fill(risk.color)
+                            .frame(width: 14, height: 14)
+                    }
+                }
+                
+                // Icon
+                ZStack {
+                    Circle()
+                        .fill(risk.color.opacity(0.15))
+                        .frame(width: 44, height: 44)
+                    
+                    Image(systemName: risk.icon)
+                        .font(.system(size: 18))
+                        .foregroundColor(risk.color)
+                }
+                
+                // Content
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 6) {
+                        Text(risk.title)
+                            .font(.headline)
+                            .foregroundColor(.textPrimary)
                         
-                        if isSelected {
-                            Circle()
-                                .fill(risk.color)
-                                .frame(width: 14, height: 14)
+                        if isRecommended {
+                            Text("★ RECOMMENDED")
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundColor(.warningYellow)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.warningYellow.opacity(0.15))
+                                .cornerRadius(4)
                         }
                     }
                     
-                    // Icon
-                    ZStack {
-                        Circle()
-                            .fill(risk.color.opacity(0.15))
-                            .frame(width: 48, height: 48)
-                        
-                        Image(systemName: risk.icon)
-                            .font(.system(size: 20))
-                            .foregroundColor(risk.color)
-                    }
-                    
-                    // Content
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text(risk.title)
-                                .font(.headline)
-                                .foregroundColor(.textPrimary)
-                            
-                            if isRecommended {
-                                Text("★")
-                                    .font(.caption)
-                                    .foregroundColor(.warningYellow)
-                            }
-                        }
-                        
-                        HStack {
-                            Text("Risk:")
-                                .font(.caption)
-                                .foregroundColor(.textSecondary)
-                            
-                            // Risk Meter using riskScore
-                            HStack(spacing: 2) {
-                                ForEach(0..<4) { index in
-                                    RoundedRectangle(cornerRadius: 2)
-                                        .fill(index < risk.riskScore ? risk.color : Color.gray.opacity(0.3))
-                                        .frame(width: 16, height: 4)
-                                }
-                            }
-                        }
-                        
-                        Text("Expected Return: \(risk.averageReturn)")
+                    HStack(spacing: 4) {
+                        Text("Risk:")
                             .font(.caption)
+                            .foregroundColor(.textSecondary)
+                        
+                        // Risk Meter using riskScore
+                        HStack(spacing: 2) {
+                            ForEach(0..<4, id: \.self) { index in
+                                RoundedRectangle(cornerRadius: 2)
+                                    .fill(index < risk.riskScore ? risk.color : Color.gray.opacity(0.3))
+                                    .frame(width: 14, height: 4)
+                            }
+                        }
+                        
+                        Spacer()
+                        
+                        Text(risk.averageReturn)
+                            .font(.caption)
+                            .fontWeight(.semibold)
                             .foregroundColor(.primaryGreen)
                     }
-                    
-                    Spacer()
                 }
-                .padding()
-            }
-            .buttonStyle(PlainButtonStyle())
-            
-            Divider()
-                .padding(.horizontal)
-            
-            Button(action: { showDetails = true }) {
-                HStack {
-                    Text("View Details")
-                    Image(systemName: "chevron.right")
-                        .font(.caption2)
+                
+                Spacer(minLength: 8)
+                
+                // Info Button
+                Button(action: onInfoTapped) {
+                    Image(systemName: "info.circle.fill")
+                        .font(.title3)
+                        .foregroundColor(risk.color.opacity(0.8))
                 }
-                .font(.subheadline)
-                .fontWeight(.medium)
-                .foregroundColor(risk.color)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
+                .buttonStyle(PlainButtonStyle())
             }
+            .padding(14)
+            .background(Color(UIColor.secondarySystemGroupedBackground))
+            .cornerRadius(12)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(isSelected ? risk.color : Color.borderPrimary, lineWidth: isSelected ? 2 : 1)
+            )
+            .shadow(color: Color.shadowLight, radius: 2, x: 0, y: 1)
         }
-        .background(Color.backgroundCard)
-        .cornerRadius(12)
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(isSelected ? risk.color : Color.borderPrimary, lineWidth: isSelected ? 2 : 1)
-        )
-        .shadow(color: Color.shadowLight, radius: 2, x: 0, y: 1)
-        .sheet(isPresented: $showDetails) {
-            PortfolioDetailView(risk: risk)
-        }
+        .buttonStyle(PlainButtonStyle())
     }
 }
 
 struct RecommendedPortfolioCard: View {
     let risk: RiskLevel
     let action: () -> Void
+    @Environment(\.colorScheme) private var colorScheme
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -263,7 +271,7 @@ struct RecommendedPortfolioCard: View {
             Button(action: action) {
                 HStack {
                     Text("View Details")
-                    Image(systemName: "arrow.right")
+                    Image(systemName: "info.circle")
                         .font(.caption)
                 }
                 .font(.subheadline)
@@ -271,7 +279,7 @@ struct RecommendedPortfolioCard: View {
                 .foregroundColor(risk.color)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
-                .background(Color.white)
+                .background(Color(UIColor.systemBackground))
                 .cornerRadius(10)
             }
             .padding(.top, 4)

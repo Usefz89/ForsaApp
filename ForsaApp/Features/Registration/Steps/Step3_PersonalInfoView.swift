@@ -8,6 +8,7 @@
 import SwiftUI
 
 /// Step 3: Personal Information - Date of Birth, citizenship, country of birth
+/// Collects personal details required for KYC compliance
 struct Step3_PersonalInfoView: View {
     @ObservedObject var viewModel: RegistrationViewModel
     
@@ -17,6 +18,11 @@ struct Step3_PersonalInfoView: View {
     @State private var showValidationError = false
     @State private var validationErrorMessage = ""
     @State private var shakeOffset: CGFloat = 0
+    
+    // MARK: - Animation & Feedback
+    private let springAnimation = Animation.spring(response: 0.4, dampingFraction: 0.8)
+    private let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
+    private let selectionFeedback = UISelectionFeedbackGenerator()
     
     private let minimumDate: Date = {
         Calendar.current.date(byAdding: .year, value: -100, to: Date()) ?? Date()
@@ -79,40 +85,47 @@ struct Step3_PersonalInfoView: View {
         
         if errors.isEmpty {
             // Form is valid - proceed
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+            impactFeedback.impactOccurred()
+            withAnimation(springAnimation) {
                 viewModel.nextStep()
             }
         } else {
             // Show first error
             validationErrorMessage = errors.first ?? "Please complete all required fields"
             
-            // Haptic feedback
-            let generator = UINotificationFeedbackGenerator()
-            generator.notificationOccurred(.error)
+            // Error haptic feedback
+            let errorFeedback = UINotificationFeedbackGenerator()
+            errorFeedback.notificationOccurred(.error)
             
             // Show error with animation
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+            withAnimation(springAnimation) {
                 showValidationError = true
             }
             
-            // Shake animation
-            withAnimation(.default) {
-                shakeOffset = 10
+            // Shake animation using interpolating spring for smoother effect
+            triggerShakeAnimation()
+        }
+    }
+    
+    /// Triggers a smooth shake animation
+    private func triggerShakeAnimation() {
+        withAnimation(.interpolatingSpring(stiffness: 600, damping: 10)) {
+            shakeOffset = 10
+        }
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            withAnimation(.interpolatingSpring(stiffness: 600, damping: 10)) {
+                shakeOffset = -8
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                withAnimation(.default) {
-                    shakeOffset = -8
-                }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            withAnimation(.interpolatingSpring(stiffness: 600, damping: 10)) {
+                shakeOffset = 6
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                withAnimation(.default) {
-                    shakeOffset = 6
-                }
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                withAnimation(.default) {
-                    shakeOffset = 0
-                }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            withAnimation(.interpolatingSpring(stiffness: 600, damping: 10)) {
+                shakeOffset = 0
             }
         }
     }
@@ -283,7 +296,10 @@ struct Step3_PersonalInfoView: View {
                     .foregroundColor(.errorRed)
             }
             
-            Button(action: { showCitizenshipPicker = true }) {
+            Button(action: {
+                selectionFeedback.selectionChanged()
+                showCitizenshipPicker = true
+            }) {
                 HStack {
                     Text(citizenshipFlag)
                         .font(.title3)
@@ -314,6 +330,9 @@ struct Step3_PersonalInfoView: View {
                         .stroke(Color.borderPrimary, lineWidth: 1)
                 )
             }
+            .accessibilityLabel("Country of citizenship, required")
+            .accessibilityValue(citizenshipName)
+            .accessibilityHint("Double tap to select your country of citizenship")
         }
         .sheet(isPresented: $showCitizenshipPicker) {
             CountrySelectionSheet(
@@ -535,9 +554,28 @@ struct CountrySelectionSheet: View {
     }
 }
 
-// MARK: - Preview
+// MARK: - Previews
 
-#Preview {
+#Preview("Personal Info - Empty") {
     Step3_PersonalInfoView(viewModel: RegistrationViewModel())
+}
+
+#Preview("Personal Info - Filled") {
+    Step3_PersonalInfoView(viewModel: {
+        let vm = RegistrationViewModel()
+        vm.registrationData.dateOfBirth = Calendar.current.date(byAdding: .year, value: -30, to: Date())
+        vm.registrationData.citizenship = "KWT"
+        vm.registrationData.countryOfBirth = "KWT"
+        return vm
+    }())
+}
+
+#Preview("Date Picker Sheet") {
+    DatePickerSheet(
+        selectedDate: .constant(Date()),
+        minimumDate: Calendar.current.date(byAdding: .year, value: -100, to: Date()) ?? Date(),
+        maximumDate: Calendar.current.date(byAdding: .year, value: -18, to: Date()) ?? Date(),
+        title: "Date of Birth"
+    )
 }
 

@@ -9,12 +9,17 @@ import SwiftUI
 
 /// Main container view for the multi-step KYC registration flow
 /// Manages navigation between steps with beautiful transitions
+/// Follows MVVM pattern with RegistrationViewModel for state management
 struct RegistrationFlowView: View {
     @StateObject private var viewModel = RegistrationViewModel()
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var coordinator: AppCoordinator
     
     @State private var showCancelAlert = false
+    
+    // MARK: - Animation Constants
+    private let springAnimation = Animation.spring(response: 0.4, dampingFraction: 0.8)
+    private let transitionDuration: Double = 0.3
     
     var body: some View {
         ZStack {
@@ -107,7 +112,7 @@ struct RegistrationFlowView: View {
             HStack {
                 if !viewModel.isOnFirstStep {
                     Button(action: {
-                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                        withAnimation(springAnimation) {
                             viewModel.previousStep()
                         }
                     }) {
@@ -119,6 +124,8 @@ struct RegistrationFlowView: View {
                         }
                         .foregroundColor(.primaryPurple)
                     }
+                    .accessibilityLabel("Go back to previous step")
+                    .accessibilityHint("Returns to \(viewModel.currentStep.previous?.title ?? "previous step")")
                 } else {
                     Button(action: { showCancelAlert = true }) {
                         Image(systemName: "xmark")
@@ -128,6 +135,8 @@ struct RegistrationFlowView: View {
                             .background(Color.backgroundSecondary)
                             .clipShape(Circle())
                     }
+                    .accessibilityLabel("Cancel registration")
+                    .accessibilityHint("Your progress will be saved")
                 }
                 
                 Spacer()
@@ -136,6 +145,7 @@ struct RegistrationFlowView: View {
                 Text("Step \(viewModel.currentStep.rawValue + 1) of \(RegistrationStep.allCases.count)")
                     .font(.caption1Medium)
                     .foregroundColor(.textTertiary)
+                    .accessibilityLabel("Step \(viewModel.currentStep.rawValue + 1) of \(RegistrationStep.allCases.count)")
             }
             .padding(.horizontal, 24)
             .padding(.top, 8)
@@ -146,6 +156,8 @@ struct RegistrationFlowView: View {
                 currentStep: viewModel.currentStep
             )
             .padding(.horizontal, 24)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(viewModel.currentStep.title): \(viewModel.currentStep.subtitle). Progress \(Int(viewModel.progress * 100)) percent complete")
         }
     }
     
@@ -196,7 +208,11 @@ struct RegistrationFlowView: View {
                 RoundedRectangle(cornerRadius: 20)
                     .fill(Color.textPrimary.opacity(0.9))
             )
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Creating your account. Please wait.")
+            .accessibilityAddTraits(.updatesFrequently)
         }
+        .transition(.opacity.animation(.easeInOut(duration: 0.25)))
     }
 }
 
@@ -257,6 +273,7 @@ struct RegistrationProgressBar: View {
 // MARK: - Step Container
 
 /// Reusable container for registration steps with consistent styling
+/// Provides standardized layout, keyboard handling, and action buttons
 struct RegistrationStepContainer<Content: View>: View {
     let content: Content
     let buttonTitle: String
@@ -268,6 +285,9 @@ struct RegistrationStepContainer<Content: View>: View {
     let onSecondaryTap: () -> Void
     
     @State private var isKeyboardVisible = false
+    
+    // MARK: - Haptic Feedback
+    private let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
     
     init(
         buttonTitle: String = "Continue",
@@ -296,50 +316,22 @@ struct RegistrationStepContainer<Content: View>: View {
                 content
                     .padding(.horizontal, 24)
                     .padding(.top, 24)
-                    .padding(.bottom, isKeyboardVisible ? 20 : 120) // Less padding when keyboard visible
+                    .padding(.bottom, isKeyboardVisible ? 20 : 120)
             }
+            .scrollDismissesKeyboard(.interactively)
             .onTapGesture {
-                // Dismiss keyboard when tapping outside
-                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                dismissKeyboard()
             }
             
             Spacer(minLength: 0)
             
             // Fixed bottom buttons - hidden when keyboard is visible
             if !isKeyboardVisible {
-            VStack(spacing: 12) {
-                ForsaButton(
-                    buttonTitle,
-                    style: .primary,
-                    size: .large,
-                    isDisabled: isButtonDisabled,
-                    isLoading: isLoading
-                ) {
-                    onPrimaryTap()
-                }
-                
-                if showSecondaryButton {
-                    Button(action: onSecondaryTap) {
-                        Text(secondaryButtonTitle)
-                            .font(.buttonMedium)
-                            .foregroundColor(.textSecondary)
-                    }
-                    .padding(.vertical, 8)
-                }
-            }
-            .padding(.horizontal, 24)
-            .padding(.bottom, 34)
-            .padding(.top, 16)
-            .background(
-                Rectangle()
-                    .fill(Color.backgroundPrimary)
-                    .shadow(color: Color.shadowLight, radius: 20, x: 0, y: -10)
-                    .ignoresSafeArea(edges: .bottom)
-            )
-                .transition(.move(edge: .bottom).combined(with: .opacity))
+                bottomButtonsView
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .animation(.easeInOut(duration: 0.25), value: isKeyboardVisible)
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: isKeyboardVisible)
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
             isKeyboardVisible = true
         }
@@ -347,10 +339,58 @@ struct RegistrationStepContainer<Content: View>: View {
             isKeyboardVisible = false
         }
     }
+    
+    // MARK: - Bottom Buttons
+    
+    private var bottomButtonsView: some View {
+        VStack(spacing: 12) {
+            ForsaButton(
+                buttonTitle,
+                style: .primary,
+                size: .large,
+                isDisabled: isButtonDisabled,
+                isLoading: isLoading
+            ) {
+                impactFeedback.impactOccurred()
+                onPrimaryTap()
+            }
+            .accessibilityLabel(buttonTitle)
+            .accessibilityHint(isButtonDisabled ? "Complete all required fields to continue" : "Tap to proceed to next step")
+            
+            if showSecondaryButton {
+                Button(action: {
+                    impactFeedback.impactOccurred(intensity: 0.5)
+                    onSecondaryTap()
+                }) {
+                    Text(secondaryButtonTitle)
+                        .font(.buttonMedium)
+                        .foregroundColor(.textSecondary)
+                }
+                .padding(.vertical, 8)
+                .accessibilityLabel(secondaryButtonTitle)
+            }
+        }
+        .padding(.horizontal, 24)
+        .padding(.bottom, 34)
+        .padding(.top, 16)
+        .background(
+            Rectangle()
+                .fill(Color.backgroundPrimary)
+                .shadow(color: Color.shadowLight, radius: 20, x: 0, y: -10)
+                .ignoresSafeArea(edges: .bottom)
+        )
+    }
+    
+    // MARK: - Helpers
+    
+    private func dismissKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
 }
 
 // MARK: - Form Field Components
 
+/// Reusable text field component with consistent styling and accessibility support
 struct RegistrationTextField: View {
     let label: String
     let placeholder: String
@@ -361,14 +401,24 @@ struct RegistrationTextField: View {
     var isSecure: Bool = false
     var errorMessage: String?
     var helpText: String?
+    var isRequired: Bool = false
     
     @FocusState private var isFocused: Bool
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(label)
-                .font(.inputLabel)
-                .foregroundColor(.textPrimary)
+            // Label with optional required indicator
+            HStack(spacing: 4) {
+                Text(label)
+                    .font(.inputLabel)
+                    .foregroundColor(.textPrimary)
+                
+                if isRequired {
+                    Text("*")
+                        .font(.inputLabel)
+                        .foregroundColor(.errorRed)
+                }
+            }
             
             Group {
                 if isSecure {
@@ -392,7 +442,11 @@ struct RegistrationTextField: View {
             .textContentType(textContentType)
             .textInputAutocapitalization(autocapitalization)
             .autocorrectionDisabled(keyboardType == .emailAddress)
+            .accessibilityLabel(label)
+            .accessibilityHint(errorMessage ?? helpText ?? "")
+            .accessibilityValue(text.isEmpty ? "Empty" : text)
             
+            // Error or help text
             if let error = errorMessage {
                 HStack(spacing: 4) {
                     Image(systemName: "exclamationmark.circle.fill")
@@ -401,10 +455,12 @@ struct RegistrationTextField: View {
                         .font(.caption1)
                 }
                 .foregroundColor(.errorRed)
+                .accessibilityLabel("Error: \(error)")
             } else if let help = helpText {
                 Text(help)
                     .font(.caption1)
                     .foregroundColor(.textTertiary)
+                    .accessibilityLabel(help)
             }
         }
     }
@@ -419,6 +475,7 @@ struct RegistrationTextField: View {
 
 // MARK: - Registration Section Header
 
+/// Reusable section header component with icon support
 struct RegistrationSectionHeader: View {
     let title: String
     let subtitle: String?
@@ -439,6 +496,7 @@ struct RegistrationSectionHeader: View {
                     .frame(width: 40, height: 40)
                     .background(Color.primaryPurple.opacity(0.1))
                     .clipShape(Circle())
+                    .accessibilityHidden(true)
             }
             
             VStack(alignment: .leading, spacing: 4) {
@@ -455,13 +513,52 @@ struct RegistrationSectionHeader: View {
             
             Spacer()
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title). \(subtitle ?? "")")
+        .accessibilityAddTraits(.isHeader)
     }
 }
 
-// MARK: - Preview
+// MARK: - Previews
 
-#Preview {
+#Preview("Registration Flow") {
     RegistrationFlowView()
         .environmentObject(AppCoordinator())
+}
+
+#Preview("Registration TextField") {
+    VStack(spacing: 20) {
+        RegistrationTextField(
+            label: "Email Address",
+            placeholder: "you@example.com",
+            text: .constant(""),
+            keyboardType: .emailAddress,
+            isRequired: true
+        )
+        
+        RegistrationTextField(
+            label: "Email with Error",
+            placeholder: "you@example.com",
+            text: .constant("invalid"),
+            errorMessage: "Please enter a valid email"
+        )
+        
+        RegistrationTextField(
+            label: "With Help Text",
+            placeholder: "Enter value",
+            text: .constant(""),
+            helpText: "This field is optional"
+        )
+    }
+    .padding()
+}
+
+#Preview("Section Header") {
+    VStack(spacing: 20) {
+        RegistrationSectionHeader("Personal Information", subtitle: "Tell us about yourself", icon: "person.fill")
+        RegistrationSectionHeader("Address", icon: "location.fill")
+        RegistrationSectionHeader("Simple Header")
+    }
+    .padding()
 }
 
