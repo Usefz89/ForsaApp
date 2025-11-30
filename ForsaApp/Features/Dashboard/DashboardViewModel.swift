@@ -223,8 +223,17 @@ class DashboardViewModel: ObservableObject {
             hasLoadedOnce = true
             
         } catch {
-            self.errorMessage = "Failed to load data: \(error.localizedDescription)"
-            print("Dashboard Data Error: \(error)")
+            // Don't show error message for task cancellation - this is expected behavior
+            // when user triggers another refresh or navigates away
+            let isCancellation = error is CancellationError || 
+                                 (error as? URLError)?.code == .cancelled
+            
+            if isCancellation {
+                print("Dashboard refresh cancelled (this is normal)")
+            } else {
+                self.errorMessage = "Failed to load data: \(error.localizedDescription)"
+                print("Dashboard Data Error: \(error)")
+            }
             hasLoadedOnce = true  // Mark as loaded even on error
         }
         
@@ -244,6 +253,25 @@ class DashboardViewModel: ObservableObject {
             self.errorMessage = "Deposit failed: \(error.localizedDescription)"
         }
         isLoading = false
+    }
+    
+    // MARK: - Order Management
+    
+    @MainActor
+    func cancelAllPendingOrders() async {
+        guard let accountId = accountId else { return }
+        
+        do {
+            try await alpacaService.cancelAllOrders(accountId: accountId)
+            await refreshData()
+        } catch {
+            self.errorMessage = "Failed to cancel orders: \(error.localizedDescription)"
+        }
+    }
+    
+    @MainActor
+    func clearError() {
+        errorMessage = nil
     }
     
     // MARK: - Helpers

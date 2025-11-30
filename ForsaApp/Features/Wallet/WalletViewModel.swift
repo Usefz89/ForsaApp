@@ -8,8 +8,11 @@
 import Foundation
 import SwiftUI
 
+/// ViewModel responsible for managing wallet/cash reserve data and operations
 @MainActor
-class CashReserveViewModel: ObservableObject {
+class WalletViewModel: ObservableObject {
+    // MARK: - Published Properties
+    
     @Published var cashAccount: CashAccount
     @Published var allTransactions: [DepositTransaction] = []
     @Published var pendingTransactions: [DepositTransaction] = []
@@ -19,14 +22,16 @@ class CashReserveViewModel: ObservableObject {
     @Published var showingWithdrawFlow = false
 
     @Published var isLoading = false
-    @Published var refreshing = false
+    @Published var isRefreshing = false
     @Published var errorMessage: String?
     @Published var hasLoadedOnce = false
     
-    private let alpacaService = AlpacaTradingService.shared
-
     @Published var buyingPower: Double = 0
     
+    // MARK: - Private Properties
+    
+    private let alpacaService = AlpacaTradingService.shared
+
     // MARK: - Computed Properties
     
     var pendingAmount: Double {
@@ -52,6 +57,10 @@ class CashReserveViewModel: ObservableObject {
     var hasTransactions: Bool {
         !allTransactions.isEmpty
     }
+    
+    var hasPendingTransactions: Bool {
+        !pendingTransactions.isEmpty
+    }
 
     // MARK: - Init
     
@@ -74,9 +83,9 @@ class CashReserveViewModel: ObservableObject {
     }
 
     func refreshData() async {
-        refreshing = true
+        isRefreshing = true
         await fetchAlpacaAccountData()
-        refreshing = false
+        isRefreshing = false
     }
     
     func showDepositFlow() {
@@ -93,12 +102,17 @@ class CashReserveViewModel: ObservableObject {
         }
     }
     
+    func clearError() {
+        withAnimation(.easeOut(duration: 0.2)) {
+            errorMessage = nil
+        }
+    }
+    
     // MARK: - Private Methods
     
     private func fetchAlpacaAccountData() async {
         guard let accountId = UserDefaults.standard.string(forKey: "alpaca_account_id") else {
-            print("❌ No Alpaca account ID found")
-            errorMessage = "No account found. Please sign up first."
+            errorMessage = WalletStrings.noAccountFound
             hasLoadedOnce = true
             return
         }
@@ -107,18 +121,13 @@ class CashReserveViewModel: ObservableObject {
         errorMessage = nil
         
         do {
-            print("📊 Fetching Alpaca account details...")
             let account = try await alpacaService.fetchAccountDetails(accountId: accountId)
             
             let cashValue = account.cashValue
             let buyingPowerValue = account.buyingPowerValue
             
-            print("💰 Cash Balance: $\(cashValue)")
-            print("💳 Buying Power: $\(buyingPowerValue)")
-            
             self.buyingPower = buyingPowerValue
             
-            print("📋 Fetching transfer history...")
             let transfers = try await alpacaService.getTransfers(accountId: accountId)
             
             var completed: [DepositTransaction] = []
@@ -131,8 +140,6 @@ class CashReserveViewModel: ObservableObject {
                 let direction = transfer["direction"] as? String ?? "INCOMING"
                 let status = transfer["status"] as? String ?? "COMPLETE"
                 let createdAtString = transfer["created_at"] as? String ?? ""
-                
-                print("📝 Transfer: amount=$\(amount), direction=\(direction), status=\(status)")
                 
                 let dateFormatter = ISO8601DateFormatter()
                 let createdAt = dateFormatter.date(from: createdAtString) ?? Date()
@@ -157,7 +164,7 @@ class CashReserveViewModel: ObservableObject {
                 case "QUEUED", "PENDING", "SENT_TO_CLEARING":
                     pending.append(transaction)
                 default:
-                    print("⏭️ Skipping transfer with status: \(status)")
+                    break
                 }
             }
             
@@ -180,18 +187,13 @@ class CashReserveViewModel: ObservableObject {
             self.pendingTransactions = pending.sorted { $0.createdAt > $1.createdAt }
             self.allTransactions = (completed + pending).sorted { $0.createdAt > $1.createdAt }
             
-            print("✅ Loaded \(completed.count) completed and \(pending.count) pending transfers")
-            print("💰 Total Deposited: $\(totalDeposited), Total Withdrawn: $\(totalWithdrawn)")
-            
             hasLoadedOnce = true
             
         } catch {
-            print("❌ Failed to fetch Alpaca data: \(error)")
-            errorMessage = "Failed to load account data"
+            errorMessage = WalletStrings.failedToLoadData
             hasLoadedOnce = true
         }
         
         isLoading = false
     }
 }
-

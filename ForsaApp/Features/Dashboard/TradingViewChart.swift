@@ -124,15 +124,6 @@ struct TradingViewChart: View {
             RuleMark(y: .value("Current", currentPrice))
                 .foregroundStyle(chartColor.opacity(0.4))
                 .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
-                .annotation(position: .trailing, alignment: .leading) {
-                    Text(formatCompactPrice(currentPrice))
-                        .font(.system(size: 8, weight: .bold, design: .monospaced))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 2)
-                        .background(chartColor)
-                        .cornerRadius(3)
-                }
             
             // Main line
             ForEach(chartData) { data in
@@ -182,7 +173,6 @@ struct TradingViewChart: View {
                 .symbolSize(35)
             }
         }
-        .frame(height: 180)
         .chartYScale(domain: minValue...maxValue)
         .chartYAxis {
             AxisMarks(position: .trailing, values: .automatic(desiredCount: 4)) { value in
@@ -201,7 +191,7 @@ struct TradingViewChart: View {
             AxisMarks(values: getAxisValues()) { value in
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [4, 4]))
                     .foregroundStyle(Color.borderLight.opacity(0.25))
-                AxisValueLabel(anchor: .top) {
+                AxisValueLabel {
                     if let date = value.as(Date.self) {
                         Text(formatAxisLabel(date))
                             .font(.system(size: 10, weight: .medium))
@@ -210,6 +200,8 @@ struct TradingViewChart: View {
                 }
             }
         }
+        .frame(height: 180)
+        .contentShape(Rectangle())
         .chartOverlay { proxy in
             GeometryReader { _ in
                 Rectangle()
@@ -239,6 +231,8 @@ struct TradingViewChart: View {
             }
         }
         .animation(.easeInOut(duration: 0.15), value: selectedDataPoint?.id)
+        .animation(.easeInOut(duration: 0.3), value: chartData.count)
+        .id(selectedTimeframe)
     }
     
     // MARK: - Axis Value Calculations
