@@ -8,6 +8,7 @@
 
 /* Begin PBXFileReference section */
 		CA3117A52E7FC11800E36A9B /* ForsaApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ForsaApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		CA3117C02E7FC11800E36A9B /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -32,6 +33,7 @@
 		CA31179C2E7FC11800E36A9B = {
 			isa = PBXGroup;
 			children = (
+				CA3117C02E7FC11800E36A9B /* Secrets.xcconfig */,
 				CA3117A72E7FC11800E36A9B /* ForsaApp */,
 				CA3117A62E7FC11800E36A9B /* Products */,
 			);
@@ -243,6 +245,7 @@
 		};
 		CA3117B22E7FC11900E36A9B /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = CA3117C02E7FC11800E36A9B /* Secrets.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -253,6 +256,12 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_ALPACA_API_KEY = "$(ALPACA_API_KEY)";
+				INFOPLIST_KEY_ALPACA_API_SECRET = "$(ALPACA_API_SECRET)";
+				INFOPLIST_KEY_TWILIO_ACCOUNT_SID = "$(TWILIO_ACCOUNT_SID)";
+				INFOPLIST_KEY_TWILIO_AUTH_TOKEN = "$(TWILIO_AUTH_TOKEN)";
+				INFOPLIST_KEY_TWILIO_RECOVERY_CODE = "$(TWILIO_RECOVERY_CODE)";
+				INFOPLIST_KEY_TWILIO_VERIFY_SERVICE_SID = "$(TWILIO_VERIFY_SERVICE_SID)";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -282,6 +291,7 @@
 		};
 		CA3117B32E7FC11900E36A9B /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = CA3117C02E7FC11800E36A9B /* Secrets.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -292,6 +302,12 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_ALPACA_API_KEY = "$(ALPACA_API_KEY)";
+				INFOPLIST_KEY_ALPACA_API_SECRET = "$(ALPACA_API_SECRET)";
+				INFOPLIST_KEY_TWILIO_ACCOUNT_SID = "$(TWILIO_ACCOUNT_SID)";
+				INFOPLIST_KEY_TWILIO_AUTH_TOKEN = "$(TWILIO_AUTH_TOKEN)";
+				INFOPLIST_KEY_TWILIO_RECOVERY_CODE = "$(TWILIO_RECOVERY_CODE)";
+				INFOPLIST_KEY_TWILIO_VERIFY_SERVICE_SID = "$(TWILIO_VERIFY_SERVICE_SID)";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;

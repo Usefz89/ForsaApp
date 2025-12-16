@@ -134,6 +134,14 @@ enum WalletStrings {
     static let availableToWithdraw = String(localized: "Available to Withdraw")
     static let estimatedArrival = String(localized: "Estimated Arrival")
     static let businessDays = String(localized: "1-3 Business Days")
+    static let withdrawTo = String(localized: "Withdraw to")
+    static let loadingBankAccount = String(localized: "Loading bank account...")
+    static let noBankAccountLinked = String(localized: "No Bank Account Linked")
+    static let noBankAccountDescription = String(localized: "You need to link a bank account before you can withdraw funds. Bank accounts are linked when you make your first deposit.")
+    static let goBack = String(localized: "Go Back")
+    static let withdrawalInitiated = String(localized: "Withdrawal Initiated!")
+    static let withdrawing = String(localized: "Withdrawing")
+    static let to = String(localized: "to")
     
     // Results
     static let investmentComplete = String(localized: "Investment Complete!")

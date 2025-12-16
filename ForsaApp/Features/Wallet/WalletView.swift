@@ -45,7 +45,12 @@ struct WalletView: View {
             .sheet(isPresented: $viewModel.showingWithdrawFlow, onDismiss: {
                 viewModel.loadData()
             }) {
-                WithdrawFlowView(availableBalance: viewModel.availableBalance)
+                WithdrawFlowView(
+                    availableBalance: viewModel.availableBalance,
+                    onWithdrawalComplete: { _ in
+                        viewModel.loadData()
+                    }
+                )
             }
         }
         .onAppear {

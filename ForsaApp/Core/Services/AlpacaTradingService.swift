@@ -939,14 +939,57 @@ class AlpacaTradingService: ObservableObject {
     func getACHRelationships(accountId: String) async throws -> [[String: Any]] {
         let url = URL(string: "\(brokerBaseURL)/accounts/\(accountId)/ach_relationships")!
         let request = try createBrokerRequest(url: url, method: "GET")
-        
+
         let (data, response) = try await URLSession.shared.data(for: request)
         try validateResponse(response, data: data)
-        
+
         if let relationships = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
             return relationships
         }
         return []
+    }
+
+    /// Gets linked bank account information for display
+    /// Returns nil if no bank account is linked
+    func getLinkedBankAccount(accountId: String) async throws -> LinkedBankAccount? {
+        let relationships = try await getACHRelationships(accountId: accountId)
+
+        guard let relationship = relationships.first,
+              let status = relationship["status"] as? String,
+              status.uppercased() == "APPROVED" || status.uppercased() == "ACTIVE" else {
+            return nil
+        }
+
+        let nickname = relationship["nickname"] as? String ?? "Bank Account"
+        let bankAccountType = relationship["bank_account_type"] as? String ?? "CHECKING"
+        let bankAccountNumber = relationship["bank_account_number"] as? String ?? ""
+        let relationshipId = relationship["id"] as? String ?? ""
+
+        // Mask account number - show only last 4 digits
+        let maskedAccountNumber: String
+        if bankAccountNumber.count >= 4 {
+            maskedAccountNumber = "••••" + bankAccountNumber.suffix(4)
+        } else {
+            maskedAccountNumber = "••••" + bankAccountNumber
+        }
+
+        return LinkedBankAccount(
+            id: relationshipId,
+            nickname: nickname,
+            bankAccountType: bankAccountType,
+            maskedAccountNumber: maskedAccountNumber,
+            status: status
+        )
+    }
+
+    /// Checks if user has a linked bank account for withdrawals
+    func hasLinkedBankAccount(accountId: String) async -> Bool {
+        do {
+            let account = try await getLinkedBankAccount(accountId: accountId)
+            return account != nil
+        } catch {
+            return false
+        }
     }
     
     /// Funds the account via ACH Transfer (Sandbox)
@@ -1081,44 +1124,90 @@ class AlpacaTradingService: ObservableObject {
         print("ℹ️ Transfer simulation methods exhausted. Transfer may need manual approval or time to process.")
     }
     
-    /// Withdraws funds from the account via ACH Transfer (Sandbox)
-    func withdrawFunds(accountId: String, amount: Double) async throws {
+    /// Withdraws funds from the account via ACH Transfer
+    /// Returns the transfer details on success
+    func withdrawFunds(accountId: String, amount: Double) async throws -> WithdrawalResult {
         print("💸 Withdrawing $\(amount) from account \(accountId)")
-        
-        guard amount > 0 else { return }
-        
+
+        guard amount > 0 else {
+            throw WithdrawalError.invalidAmount
+        }
+
+        // Validate minimum withdrawal amount
+        guard amount >= 1.0 else {
+            throw WithdrawalError.belowMinimum(minimum: 1.0)
+        }
+
+        // Get account details to check available balance
+        let account = try await fetchAccountDetails(accountId: accountId)
+        let availableCash = account.cashValue
+
+        // Check if sufficient funds available
+        guard amount <= availableCash else {
+            throw WithdrawalError.insufficientFunds(available: availableCash, requested: amount)
+        }
+
         // Get existing ACH relationship
         let relationships = try await getACHRelationships(accountId: accountId)
-        
+
         guard let firstRelationship = relationships.first,
               let achRelationshipId = firstRelationship["id"] as? String else {
             print("❌ No ACH relationship found. Cannot withdraw.")
-            throw URLError(.badServerResponse)
+            throw WithdrawalError.noBankAccountLinked
         }
-        
+
+        // Check ACH relationship status
+        let relationshipStatus = firstRelationship["status"] as? String ?? ""
+        guard relationshipStatus.uppercased() == "APPROVED" || relationshipStatus.uppercased() == "ACTIVE" else {
+            throw WithdrawalError.bankAccountNotApproved(status: relationshipStatus)
+        }
+
         // Create withdrawal transfer
         let url = URL(string: "\(brokerBaseURL)/accounts/\(accountId)/transfers")!
         var request = try createBrokerRequest(url: url, method: "POST")
-        
+
         let body: [String: Any] = [
             "transfer_type": "ach",
             "relationship_id": achRelationshipId,
             "amount": String(format: "%.2f", amount),
             "direction": "OUTGOING"
         ]
-        
+
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, response) = try await URLSession.shared.data(for: request)
-        
+
         if let responseString = String(data: data, encoding: .utf8) {
             print("📥 Withdrawal Response: \(responseString)")
         }
-        
+
         try validateResponse(response, data: data)
-        print("✅ Withdrawal transfer initiated successfully!")
-        
-        // Refresh account
+
+        // Parse response for transfer details
+        var transferId = ""
+        var status = "QUEUED"
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            transferId = json["id"] as? String ?? ""
+            status = json["status"] as? String ?? "QUEUED"
+        }
+
+        print("✅ Withdrawal transfer initiated successfully! Transfer ID: \(transferId)")
+
+        // Refresh account to get updated balance
         _ = try? await fetchAccountDetails(accountId: accountId)
+
+        // Get bank account info for the result
+        let bankNickname = firstRelationship["nickname"] as? String ?? "Bank Account"
+        let bankAccountNumber = firstRelationship["bank_account_number"] as? String ?? ""
+        let maskedAccount = bankAccountNumber.count >= 4 ? "••••" + bankAccountNumber.suffix(4) : "••••"
+
+        return WithdrawalResult(
+            transferId: transferId,
+            amount: amount,
+            status: status,
+            bankAccountNickname: bankNickname,
+            maskedBankAccount: maskedAccount,
+            estimatedArrival: "1-3 business days"
+        )
     }
     
     /// Gets transfer history for an account
@@ -2232,7 +2321,7 @@ enum AccountStatusAction {
     case showRequiredActions(actions: [AlpacaAccountCreationResult.RequiredAction])
     case proceedToOnboarding(accountId: String)
     case showRejection(reasons: [String], canAppeal: Bool)
-    
+
     var title: String {
         switch self {
         case .showPendingVerification:
@@ -2243,6 +2332,108 @@ enum AccountStatusAction {
             return "Account Approved"
         case .showRejection:
             return "Application Status"
+        }
+    }
+}
+
+// MARK: - Withdrawal Types
+
+/// Represents a linked bank account for withdrawals
+struct LinkedBankAccount {
+    let id: String
+    let nickname: String
+    let bankAccountType: String
+    let maskedAccountNumber: String
+    let status: String
+
+    var displayName: String {
+        if nickname.isEmpty {
+            return "\(bankAccountType.capitalized) \(maskedAccountNumber)"
+        }
+        return "\(nickname) \(maskedAccountNumber)"
+    }
+
+    var accountTypeDisplayName: String {
+        switch bankAccountType.uppercased() {
+        case "CHECKING": return "Checking"
+        case "SAVINGS": return "Savings"
+        default: return bankAccountType.capitalized
+        }
+    }
+
+    var isActive: Bool {
+        status.uppercased() == "APPROVED" || status.uppercased() == "ACTIVE"
+    }
+}
+
+/// Result returned after successful withdrawal initiation
+struct WithdrawalResult {
+    let transferId: String
+    let amount: Double
+    let status: String
+    let bankAccountNickname: String
+    let maskedBankAccount: String
+    let estimatedArrival: String
+
+    var formattedAmount: String {
+        "$\(String(format: "%.2f", amount))"
+    }
+
+    var statusDisplayName: String {
+        switch status.uppercased() {
+        case "QUEUED": return "Queued"
+        case "PENDING": return "Pending"
+        case "SENT_TO_CLEARING": return "Processing"
+        case "APPROVED": return "Approved"
+        case "COMPLETE": return "Complete"
+        case "CANCELED", "CANCELLED": return "Cancelled"
+        case "RETURNED": return "Returned"
+        default: return status.capitalized
+        }
+    }
+}
+
+/// Errors specific to withdrawal operations
+enum WithdrawalError: Error, LocalizedError {
+    case invalidAmount
+    case belowMinimum(minimum: Double)
+    case insufficientFunds(available: Double, requested: Double)
+    case noBankAccountLinked
+    case bankAccountNotApproved(status: String)
+    case withdrawalFailed(message: String)
+    case transferCreationFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidAmount:
+            return "Please enter a valid withdrawal amount."
+        case .belowMinimum(let minimum):
+            return "Minimum withdrawal amount is $\(String(format: "%.2f", minimum))."
+        case .insufficientFunds(let available, let requested):
+            return "Insufficient funds. You requested $\(String(format: "%.2f", requested)) but only $\(String(format: "%.2f", available)) is available."
+        case .noBankAccountLinked:
+            return "No bank account linked. Please link a bank account first to withdraw funds."
+        case .bankAccountNotApproved(let status):
+            return "Your linked bank account is not approved yet (status: \(status)). Please wait for approval or link a different account."
+        case .withdrawalFailed(let message):
+            return "Withdrawal failed: \(message)"
+        case .transferCreationFailed:
+            return "Failed to create withdrawal transfer. Please try again."
+        }
+    }
+
+    var suggestedAction: String {
+        switch self {
+        case .invalidAmount, .belowMinimum:
+            return "Enter a valid amount above the minimum."
+        case .insufficientFunds:
+            return "Reduce the withdrawal amount or deposit more funds."
+        case .noBankAccountLinked:
+            return "Go to Settings > Bank Accounts to link a bank account."
+        case .bankAccountNotApproved:
+            return "Wait for bank account approval or link a different account."
+        case .withdrawalFailed, .transferCreationFailed:
+            return "Please try again later or contact support."
         }
     }
 }

@@ -14,18 +14,37 @@ struct TradingViewChart: View {
     let isPositive: Bool
     
     @State private var selectedDataPoint: ChartDataPoint?
-    @State private var showCrosshair = false
+    
+    // Keep visual sizing consistent across timeframes by locking plot height.
+    private let chartHeight: CGFloat = 190
+    private let plotHeight: CGFloat = 150
     
     private var chartColor: Color {
         isPositive ? .gainGreen : .lossRed
     }
     
-    private var minValue: Double {
-        (chartData.map { $0.value }.min() ?? 0) * 0.995
-    }
-    
-    private var maxValue: Double {
-        (chartData.map { $0.value }.max() ?? 0) * 1.005
+    /// Stable Y-domain so 1D doesn't look "zoomed in" when the value range is tiny.
+    /// Uses range-based padding with a minimum relative padding around the midpoint.
+    private var yDomain: ClosedRange<Double> {
+        guard let rawMin = chartData.map({ $0.value }).min(),
+              let rawMax = chartData.map({ $0.value }).max() else {
+            return 0...1
+        }
+
+        let range = rawMax - rawMin
+        let mid = (rawMax + rawMin) / 2
+
+        // If range is very small (common in 1D), the chart looks overly "zoomed".
+        // Add a minimum padding relative to the current value.
+        let minRelativePadding = max(abs(mid) * 0.005, 1) // ~0.5% of value, at least $1
+        let rangePadding = max(range * 0.15, minRelativePadding)
+
+        // If all points are identical, create a minimal visible domain.
+        if range == 0 {
+            return (mid - minRelativePadding)...(mid + minRelativePadding)
+        }
+
+        return (rawMin - rangePadding)...(rawMax + rangePadding)
     }
     
     private var currentPrice: Double {
@@ -173,7 +192,7 @@ struct TradingViewChart: View {
                 .symbolSize(35)
             }
         }
-        .chartYScale(domain: minValue...maxValue)
+        .chartYScale(domain: yDomain)
         .chartYAxis {
             AxisMarks(position: .trailing, values: .automatic(desiredCount: 4)) { value in
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [4, 4]))
@@ -183,6 +202,8 @@ struct TradingViewChart: View {
                         Text(formatAxisPrice(doubleValue))
                             .font(.system(size: 9, weight: .medium, design: .monospaced))
                             .foregroundColor(.textTertiary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
                     }
                 }
             }
@@ -196,11 +217,18 @@ struct TradingViewChart: View {
                         Text(formatAxisLabel(date))
                             .font(.system(size: 10, weight: .medium))
                             .foregroundColor(.textSecondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
                     }
                 }
             }
         }
-        .frame(height: 180)
+        // Lock overall chart height AND plot-area height so axis label heuristics
+        // (which differ across timeframes) don't change the perceived chart size.
+        .frame(height: chartHeight)
+        .chartPlotStyle { plotArea in
+            plotArea.frame(height: plotHeight)
+        }
         .contentShape(Rectangle())
         .chartOverlay { proxy in
             GeometryReader { _ in
@@ -217,22 +245,18 @@ struct TradingViewChart: View {
                                     })
                                     withAnimation(.easeInOut(duration: 0.08)) {
                                         selectedDataPoint = closest
-                                        showCrosshair = true
                                     }
                                 }
                             }
                             .onEnded { _ in
                                 withAnimation(.easeOut(duration: 0.15)) {
                                     selectedDataPoint = nil
-                                    showCrosshair = false
                                 }
                             }
                     )
             }
         }
         .animation(.easeInOut(duration: 0.15), value: selectedDataPoint?.id)
-        .animation(.easeInOut(duration: 0.3), value: chartData.count)
-        .id(selectedTimeframe)
     }
     
     // MARK: - Axis Value Calculations
@@ -315,4 +339,5 @@ struct TradingViewChart: View {
         }
     }
 }
+
 

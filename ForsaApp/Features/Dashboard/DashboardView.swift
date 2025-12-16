@@ -190,7 +190,7 @@ struct DashboardView: View {
                 selectedTimeframe: viewModel.selectedTimeframe,
                 onTimeframeChanged: { timeframe in
                     viewModel.selectedTimeframe = timeframe
-                    Task { await viewModel.refreshData() }
+                    Task { await viewModel.refreshChartData() }
                 }
             )
         }

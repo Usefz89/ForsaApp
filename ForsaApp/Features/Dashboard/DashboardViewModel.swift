@@ -7,6 +7,7 @@
 
 import Foundation
 import Combine
+import SwiftUI
 
 class DashboardViewModel: ObservableObject {
     @Published var totalPortfolioValue: Double = 0
@@ -273,7 +274,36 @@ class DashboardViewModel: ObservableObject {
     func clearError() {
         errorMessage = nil
     }
-    
+
+    /// Refresh only the chart data for the selected timeframe
+    /// This provides a smoother transition when switching timeframes without refreshing all dashboard data
+    @MainActor
+    func refreshChartData() async {
+        guard let accountId = accountId else { return }
+
+        do {
+            let points = try await alpacaService.fetchPortfolioHistory(
+                accountId: accountId,
+                period: mapTimeframeToPeriod(selectedTimeframe),
+                timeframe: mapTimeframeToInterval(selectedTimeframe)
+            )
+            // IMPORTANT:
+            // Avoid animating the data swap transaction itself.
+            // Swift Charts will animate its domain (Y-scale) during a data animated update,
+            // which can look like a "zoom glitch"—especially for 1D where the value range is tiny.
+            // We keep transitions consistent by updating immediately.
+            self.chartData = points
+        } catch {
+            // Don't show error for cancellation (user switched timeframe quickly)
+            let isCancellation = error is CancellationError ||
+                                 (error as? URLError)?.code == .cancelled
+
+            if !isCancellation {
+                print("Chart data refresh error: \(error.localizedDescription)")
+            }
+        }
+    }
+
     // MARK: - Helpers
     
     private func mapTimeframeToPeriod(_ timeframe: TimeFrame) -> String {

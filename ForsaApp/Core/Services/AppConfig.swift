@@ -10,25 +10,36 @@ import Foundation
 struct AppConfig {
     // Environment: "sandbox" or "production"
     static let alpacaEnvironment = "sandbox"
-    
+
     struct Alpaca {
-        // MARK: - WARNING: NEVER STORE SECRETS IN CLIENT CODE IN PRODUCTION
-        // These should be fetched from a secure backend or injected at build time.
-        
-        // Broker API credentials from: https://broker-app.alpaca.markets/
-        static let apiKey = "CKZPSCCOMX2OK2FGBAWMRQX62J"
-        static let apiSecret = "dThe4wBZF4TZnCk2E9wq2SGNJk8DSdyWAFwXd5ujBs6"
-        
+        // MARK: - API Credentials (loaded from Secrets.xcconfig via Info.plist)
+
+        static let apiKey: String = {
+            guard let key = Bundle.main.infoDictionary?["ALPACA_API_KEY"] as? String,
+                  !key.isEmpty, !key.contains("$(") else {
+                fatalError("ALPACA_API_KEY not configured. Copy Secrets.xcconfig.example to Secrets.xcconfig and fill in your values.")
+            }
+            return key
+        }()
+
+        static let apiSecret: String = {
+            guard let secret = Bundle.main.infoDictionary?["ALPACA_API_SECRET"] as? String,
+                  !secret.isEmpty, !secret.contains("$(") else {
+                fatalError("ALPACA_API_SECRET not configured. Copy Secrets.xcconfig.example to Secrets.xcconfig and fill in your values.")
+            }
+            return secret
+        }()
+
         // Broker API Base URL (Sandbox)
         static let brokerBaseURL = "https://broker-api.sandbox.alpaca.markets/v1"
-        
+
         // Market Data API Base URL
         static let dataBaseURL = "https://data.alpaca.markets/v2"
-        
+
         // MARK: - Rebalancing API Settings
         // Enable/disable server-side rebalancing feature
         static let rebalancingAPIEnabled = true
-        
+
         // Rebalancing API uses beta endpoints
         // See: https://alpaca.markets/learn/how-to-get-started-with-rebalancing-api
         static let rebalancingBaseURL = "https://broker-api.sandbox.alpaca.markets/v1/beta/rebalancing"
@@ -108,38 +119,55 @@ struct AppConfig {
     }
     
     // MARK: - Twilio Verify API
-    
+
     struct Twilio {
-        // MARK: - WARNING: NEVER STORE SECRETS IN CLIENT CODE IN PRODUCTION
-        // These should be fetched from a secure backend or environment variables.
-        // For production, use a backend proxy to call Twilio API.
-        
-        // Twilio Account SID from: https://console.twilio.com/
-        // Find this on your Twilio Console Dashboard
-        static let recoveryCode = "41BD84A4GHCFYGW48T8T7U3Q"
-        static let accountSid = "AC6d19af252d14306685f4bcd87cd27ffa"
-        
-        // Twilio Auth Token from: https://console.twilio.com/
-        // Find this on your Twilio Console Dashboard
-        static let authToken = "744c2584988f39133c561f3b7cdccd58"
-        
-        // Twilio Verify Service SID from: https://console.twilio.com/verify/services
-        // Create a Verify Service and copy the Service SID
-        static let verifyServiceSid = "VA8149770f7ed55f7339917fe88c7e0603"
-        
+        // MARK: - API Credentials (loaded from Secrets.xcconfig via Info.plist)
+
+        static let accountSid: String = {
+            guard let sid = Bundle.main.infoDictionary?["TWILIO_ACCOUNT_SID"] as? String,
+                  !sid.isEmpty, !sid.contains("$(") else {
+                fatalError("TWILIO_ACCOUNT_SID not configured. Copy Secrets.xcconfig.example to Secrets.xcconfig and fill in your values.")
+            }
+            return sid
+        }()
+
+        static let authToken: String = {
+            guard let token = Bundle.main.infoDictionary?["TWILIO_AUTH_TOKEN"] as? String,
+                  !token.isEmpty, !token.contains("$(") else {
+                fatalError("TWILIO_AUTH_TOKEN not configured. Copy Secrets.xcconfig.example to Secrets.xcconfig and fill in your values.")
+            }
+            return token
+        }()
+
+        static let recoveryCode: String = {
+            guard let code = Bundle.main.infoDictionary?["TWILIO_RECOVERY_CODE"] as? String,
+                  !code.isEmpty, !code.contains("$(") else {
+                fatalError("TWILIO_RECOVERY_CODE not configured. Copy Secrets.xcconfig.example to Secrets.xcconfig and fill in your values.")
+            }
+            return code
+        }()
+
+        static let verifyServiceSid: String = {
+            guard let sid = Bundle.main.infoDictionary?["TWILIO_VERIFY_SERVICE_SID"] as? String,
+                  !sid.isEmpty, !sid.contains("$(") else {
+                fatalError("TWILIO_VERIFY_SERVICE_SID not configured. Copy Secrets.xcconfig.example to Secrets.xcconfig and fill in your values.")
+            }
+            return sid
+        }()
+
         // OTP Configuration
         static let otpLength = 6
         static let otpExpirationMinutes = 10
         static let maxAttempts = 5
-        
+
         // Whether to use sandbox mode (for testing without sending real SMS)
         static let useSandbox = true
-        
+
         // MARK: - Development Bypass Mode
         // When enabled, skips real Twilio API calls to save credits during development
         // Set to FALSE for production!
         static let useDevelopmentBypass = true
-        
+
         // Test OTP code accepted in development mode
         // Users can enter this code to verify without receiving real SMS
         static let testOTPCode = "123456"

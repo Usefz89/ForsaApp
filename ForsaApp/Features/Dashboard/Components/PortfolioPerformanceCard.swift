@@ -101,7 +101,7 @@ struct PortfolioPerformanceCard: View {
     }
     
     // MARK: - Chart Section
-    
+
     @ViewBuilder
     private var chartSection: some View {
         if !chartData.isEmpty {

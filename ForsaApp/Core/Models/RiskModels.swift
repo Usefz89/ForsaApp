@@ -8,10 +8,10 @@ enum RiskLevel: String, Codable, CaseIterable {
     
     var title: String {
         switch self {
-        case .conservative: return "Protection (Himaya)"
-        case .moderate: return "Balanced (Tawazun)"
-        case .growth: return "Growth (Numo)"
-        case .aggressive: return "Aggressive (Jare'e)"
+        case .conservative: return "Protection"
+        case .moderate: return "Balanced"
+        case .growth: return "Growth"
+        case .aggressive: return "Aggressive"
         }
     }
     
