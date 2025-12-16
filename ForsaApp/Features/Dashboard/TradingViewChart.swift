@@ -15,10 +15,6 @@ struct TradingViewChart: View {
     
     @State private var selectedDataPoint: ChartDataPoint?
     
-    // Keep visual sizing consistent across timeframes by locking plot height.
-    private let chartHeight: CGFloat = 190
-    private let plotHeight: CGFloat = 150
-    
     private var chartColor: Color {
         isPositive ? .gainGreen : .lossRed
     }
@@ -71,6 +67,9 @@ struct TradingViewChart: View {
             // Main Chart
             mainChart
         }
+        // Charts can sometimes render marks slightly outside their bounds during layout changes.
+        // Clipping prevents the 1D chart from visually bleeding into the timeframe selector.
+        .clipped()
     }
     
     // MARK: - OHLC Info Bar
@@ -223,12 +222,7 @@ struct TradingViewChart: View {
                 }
             }
         }
-        // Lock overall chart height AND plot-area height so axis label heuristics
-        // (which differ across timeframes) don't change the perceived chart size.
-        .frame(height: chartHeight)
-        .chartPlotStyle { plotArea in
-            plotArea.frame(height: plotHeight)
-        }
+        .frame(height: 180)
         .contentShape(Rectangle())
         .chartOverlay { proxy in
             GeometryReader { _ in

@@ -110,6 +110,14 @@ struct PortfolioPerformanceCard: View {
                 selectedTimeframe: selectedTimeframe,
                 isPositive: isPositive
             )
+            // Keep the chart area consistent across timeframes (1D labels/data shouldn't
+            // change layout height or bleed into the selector).
+            .frame(height: DashboardConstants.chartHeight)
+            .clipped()
+            // Bring back a smooth transition without animating the chart domain (which causes zoom glitches).
+            .id(selectedTimeframe)
+            .transition(.opacity)
+            .animation(.easeInOut(duration: 0.22), value: selectedTimeframe)
             .accessibilityLabel("Portfolio performance chart for \(selectedTimeframe.displayName)")
         } else {
             emptyChartPlaceholder

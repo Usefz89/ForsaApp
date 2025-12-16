@@ -6,9 +6,14 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		CA3A22642EF1516500D6DFDB /* Secrets.xcconfig.example in Resources */ = {isa = PBXBuildFile; fileRef = CA3A22632EF1516500D6DFDB /* Secrets.xcconfig.example */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		CA3117A52E7FC11800E36A9B /* ForsaApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ForsaApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		CA3117C02E7FC11800E36A9B /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
+		CA3A22632EF1516500D6DFDB /* Secrets.xcconfig.example */ = {isa = PBXFileReference; lastKnownFileType = text; path = Secrets.xcconfig.example; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -33,6 +38,7 @@
 		CA31179C2E7FC11800E36A9B = {
 			isa = PBXGroup;
 			children = (
+				CA3A22632EF1516500D6DFDB /* Secrets.xcconfig.example */,
 				CA3117C02E7FC11800E36A9B /* Secrets.xcconfig */,
 				CA3117A72E7FC11800E36A9B /* ForsaApp */,
 				CA3117A62E7FC11800E36A9B /* Products */,
@@ -111,6 +117,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				CA3A22642EF1516500D6DFDB /* Secrets.xcconfig.example in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
