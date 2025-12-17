@@ -14,6 +14,7 @@
 		CA3117A52E7FC11800E36A9B /* ForsaApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ForsaApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		CA3117C02E7FC11800E36A9B /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
 		CA3A22632EF1516500D6DFDB /* Secrets.xcconfig.example */ = {isa = PBXFileReference; lastKnownFileType = text; path = Secrets.xcconfig.example; sourceTree = "<group>"; };
+		CA3A269E2EF2A9DA00D6DFDB /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -42,6 +43,7 @@
 				CA3117C02E7FC11800E36A9B /* Secrets.xcconfig */,
 				CA3117A72E7FC11800E36A9B /* ForsaApp */,
 				CA3117A62E7FC11800E36A9B /* Products */,
+				CA3A269E2EF2A9DA00D6DFDB /* Info.plist */,
 			);
 			sourceTree = "<group>";
 		};
@@ -254,6 +256,8 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = CA3117C02E7FC11800E36A9B /* Secrets.xcconfig */;
 			buildSettings = {
+				ALPACA_API_KEY = "$(ALPACA_API_KEY)";
+				ALPACA_API_SECRET = "$(ALPACA_API_SECRET)";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = ForsaApp/ForsaApp.entitlements;
@@ -262,23 +266,7 @@
 				DEVELOPMENT_TEAM = SL788Y2E33;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_ALPACA_API_KEY = "$(ALPACA_API_KEY)";
-				INFOPLIST_KEY_ALPACA_API_SECRET = "$(ALPACA_API_SECRET)";
-				INFOPLIST_KEY_TWILIO_ACCOUNT_SID = "$(TWILIO_ACCOUNT_SID)";
-				INFOPLIST_KEY_TWILIO_AUTH_TOKEN = "$(TWILIO_AUTH_TOKEN)";
-				INFOPLIST_KEY_TWILIO_RECOVERY_CODE = "$(TWILIO_RECOVERY_CODE)";
-				INFOPLIST_KEY_TWILIO_VERIFY_SERVICE_SID = "$(TWILIO_VERIFY_SERVICE_SID)";
-				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
-				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
-				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
-				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
-				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
-				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
-				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
-				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_FILE = Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.5;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
@@ -292,6 +280,10 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2,7";
+				TWILIO_ACCOUNT_SID = "$(TWILIO_ACCOUNT_SID)";
+				TWILIO_AUTH_TOKEN = "$(TWILIO_AUTH_TOKEN)";
+				TWILIO_RECOVERY_CODE = "$(TWILIO_RECOVERY_CODE)";
+				TWILIO_VERIFY_SERVICE_SID = "$(TWILIO_VERIFY_SERVICE_SID)";
 				XROS_DEPLOYMENT_TARGET = 2.5;
 			};
 			name = Debug;
@@ -300,6 +292,8 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = CA3117C02E7FC11800E36A9B /* Secrets.xcconfig */;
 			buildSettings = {
+				ALPACA_API_KEY = "$(ALPACA_API_KEY)";
+				ALPACA_API_SECRET = "$(ALPACA_API_SECRET)";
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = ForsaApp/ForsaApp.entitlements;
@@ -308,23 +302,7 @@
 				DEVELOPMENT_TEAM = SL788Y2E33;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_ALPACA_API_KEY = "$(ALPACA_API_KEY)";
-				INFOPLIST_KEY_ALPACA_API_SECRET = "$(ALPACA_API_SECRET)";
-				INFOPLIST_KEY_TWILIO_ACCOUNT_SID = "$(TWILIO_ACCOUNT_SID)";
-				INFOPLIST_KEY_TWILIO_AUTH_TOKEN = "$(TWILIO_AUTH_TOKEN)";
-				INFOPLIST_KEY_TWILIO_RECOVERY_CODE = "$(TWILIO_RECOVERY_CODE)";
-				INFOPLIST_KEY_TWILIO_VERIFY_SERVICE_SID = "$(TWILIO_VERIFY_SERVICE_SID)";
-				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
-				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
-				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
-				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
-				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
-				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
-				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
-				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_FILE = Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.5;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
@@ -338,6 +316,10 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2,7";
+				TWILIO_ACCOUNT_SID = "$(TWILIO_ACCOUNT_SID)";
+				TWILIO_AUTH_TOKEN = "$(TWILIO_AUTH_TOKEN)";
+				TWILIO_RECOVERY_CODE = "$(TWILIO_RECOVERY_CODE)";
+				TWILIO_VERIFY_SERVICE_SID = "$(TWILIO_VERIFY_SERVICE_SID)";
 				XROS_DEPLOYMENT_TARGET = 2.5;
 			};
 			name = Release;
