@@ -14,6 +14,27 @@ struct PortfolioBottomSheet: View {
     var onCancelAllOrders: (() -> Void)? = nil
 
     @State private var searchText = ""
+    @State private var isExpanded = false
+    @GestureState private var dragOffset: CGFloat = 0
+
+    let collapsedHeight: CGFloat
+    let expandedHeight: CGFloat
+
+    init(
+        positions: [AlpacaPosition],
+        pendingOrders: [OpenOrder],
+        pendingOrdersSummary: PendingOrdersSummary,
+        onCancelAllOrders: (() -> Void)? = nil,
+        collapsedHeight: CGFloat = 280,
+        expandedHeight: CGFloat = 600
+    ) {
+        self.positions = positions
+        self.pendingOrders = pendingOrders
+        self.pendingOrdersSummary = pendingOrdersSummary
+        self.onCancelAllOrders = onCancelAllOrders
+        self.collapsedHeight = collapsedHeight
+        self.expandedHeight = expandedHeight
+    }
 
     private var filteredPositions: [AlpacaPosition] {
         if searchText.isEmpty {
@@ -22,10 +43,18 @@ struct PortfolioBottomSheet: View {
         return positions.filter { $0.symbol.localizedCaseInsensitiveContains(searchText) }
     }
 
+    private var currentHeight: CGFloat {
+        let baseHeight = isExpanded ? expandedHeight : collapsedHeight
+        let adjustedHeight = baseHeight - dragOffset
+        return max(collapsedHeight, min(expandedHeight, adjustedHeight))
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            // Drag handle
-            dragHandle
+            // Drag handle area
+            dragHandleArea
+                .contentShape(Rectangle())
+                .gesture(dragGesture)
 
             // Search bar
             searchBar
@@ -51,23 +80,56 @@ struct PortfolioBottomSheet: View {
                 .padding(.horizontal, DashboardConstants.horizontalPadding)
                 .padding(.bottom, 100)
             }
+            .disabled(!isExpanded && dragOffset == 0)
         }
+        .frame(height: currentHeight)
+        .frame(maxWidth: .infinity)
         .background(Color.backgroundPrimary)
         .clipShape(RoundedCorner(radius: 20, corners: [.topLeft, .topRight]))
-        .shadow(color: Color.black.opacity(0.1), radius: 10, x: 0, y: -5)
+        .shadow(color: Color.black.opacity(0.15), radius: 10, x: 0, y: -5)
     }
 
-    // MARK: - Drag Handle
+    // MARK: - Drag Gesture
 
-    private var dragHandle: some View {
-        VStack(spacing: 0) {
+    private var dragGesture: some Gesture {
+        DragGesture()
+            .updating($dragOffset) { value, state, _ in
+                state = value.translation.height
+            }
+            .onEnded { value in
+                let dragAmount = value.translation.height
+                let velocity = value.predictedEndTranslation.height
+
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                    // Dragging up (negative) = expand, dragging down (positive) = collapse
+                    if dragAmount < -50 || velocity < -200 {
+                        isExpanded = true
+                    } else if dragAmount > 50 || velocity > 200 {
+                        isExpanded = false
+                    }
+                }
+            }
+    }
+
+    // MARK: - Drag Handle Area
+
+    private var dragHandleArea: some View {
+        VStack(spacing: 8) {
             Capsule()
-                .fill(Color.textTertiary.opacity(0.4))
-                .frame(width: 36, height: 5)
-                .padding(.top, 10)
-                .padding(.bottom, 16)
+                .fill(Color.textTertiary.opacity(0.5))
+                .frame(width: 40, height: 5)
+                .padding(.top, 12)
+
+            // Hint text
+            Text(isExpanded ? "Swipe down to collapse" : "Swipe up for more")
+                .font(.caption2)
+                .foregroundColor(.textTertiary)
+                .padding(.bottom, 8)
         }
+        .frame(maxWidth: .infinity)
+        .background(Color.backgroundPrimary)
     }
+
 
     // MARK: - Search Bar
 
@@ -350,9 +412,10 @@ struct RoundedCorner: Shape {
             PortfolioBottomSheet(
                 positions: [],
                 pendingOrders: [],
-                pendingOrdersSummary: .empty
+                pendingOrdersSummary: .empty,
+                collapsedHeight: 280,
+                expandedHeight: 600
             )
-            .frame(height: 400)
         }
     }
 }

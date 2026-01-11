@@ -18,7 +18,6 @@ struct DashboardView: View {
     @State private var showingPortfolioSelection = false
     @State private var showingPortfolioDetail = false
     @State private var contentAppeared = false
-    @State private var sheetDetent: PresentationDetent = .fraction(0.35)
     @State private var showDepositSheet = false
 
     // MARK: - Body
@@ -154,13 +153,24 @@ struct DashboardView: View {
                     await handleRefresh()
                 }
 
-                // Bottom Sheet - shows about 35% of screen height
-                bottomSheet
-                    .frame(height: geometry.size.height * 0.35)
-                    .offset(y: contentAppeared ? 0 : geometry.size.height * 0.2)
-                    .animation(.spring(response: 0.6, dampingFraction: 0.8)
-                               .delay(DashboardConstants.cardAppearanceDelay * 4),
-                               value: contentAppeared)
+                // Bottom Sheet - slideable
+                VStack {
+                    Spacer()
+                    PortfolioBottomSheet(
+                        positions: viewModel.positions,
+                        pendingOrders: viewModel.pendingOrders,
+                        pendingOrdersSummary: viewModel.pendingOrdersSummary,
+                        onCancelAllOrders: viewModel.hasPendingOrders ? {
+                            Task { await viewModel.cancelAllPendingOrders() }
+                        } : nil,
+                        collapsedHeight: geometry.size.height * 0.32,
+                        expandedHeight: geometry.size.height * 0.75
+                    )
+                }
+                .opacity(contentAppeared ? 1 : 0)
+                .animation(.spring(response: 0.6, dampingFraction: 0.8)
+                           .delay(DashboardConstants.cardAppearanceDelay * 4),
+                           value: contentAppeared)
             }
         }
         .ignoresSafeArea(edges: .bottom)
@@ -203,19 +213,6 @@ struct DashboardView: View {
         .frame(height: 200)
         .frame(maxWidth: .infinity)
         .accessibilityLabel("No chart data available")
-    }
-
-    // MARK: - Bottom Sheet
-
-    private var bottomSheet: some View {
-        PortfolioBottomSheet(
-            positions: viewModel.positions,
-            pendingOrders: viewModel.pendingOrders,
-            pendingOrdersSummary: viewModel.pendingOrdersSummary,
-            onCancelAllOrders: viewModel.hasPendingOrders ? {
-                Task { await viewModel.cancelAllPendingOrders() }
-            } : nil
-        )
     }
 
     // MARK: - Sheets
