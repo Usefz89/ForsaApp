@@ -14,11 +14,15 @@ struct PortfolioBottomSheet: View {
     var onCancelAllOrders: (() -> Void)? = nil
 
     @State private var searchText = ""
-    @State private var isExpanded = false
-    @GestureState private var dragOffset: CGFloat = 0
+    @State private var currentHeight: CGFloat
+    @State private var dragStartHeight: CGFloat = 0
 
     let collapsedHeight: CGFloat
     let expandedHeight: CGFloat
+
+    private var isExpanded: Bool {
+        currentHeight > (collapsedHeight + expandedHeight) / 2
+    }
 
     init(
         positions: [AlpacaPosition],
@@ -34,6 +38,7 @@ struct PortfolioBottomSheet: View {
         self.onCancelAllOrders = onCancelAllOrders
         self.collapsedHeight = collapsedHeight
         self.expandedHeight = expandedHeight
+        self._currentHeight = State(initialValue: collapsedHeight)
     }
 
     private var filteredPositions: [AlpacaPosition] {
@@ -43,18 +48,10 @@ struct PortfolioBottomSheet: View {
         return positions.filter { $0.symbol.localizedCaseInsensitiveContains(searchText) }
     }
 
-    private var currentHeight: CGFloat {
-        let baseHeight = isExpanded ? expandedHeight : collapsedHeight
-        let adjustedHeight = baseHeight - dragOffset
-        return max(collapsedHeight, min(expandedHeight, adjustedHeight))
-    }
-
     var body: some View {
         VStack(spacing: 0) {
             // Drag handle area
             dragHandleArea
-                .contentShape(Rectangle())
-                .gesture(dragGesture)
 
             // Search bar
             searchBar
@@ -80,35 +77,13 @@ struct PortfolioBottomSheet: View {
                 .padding(.horizontal, DashboardConstants.horizontalPadding)
                 .padding(.bottom, 100)
             }
-            .disabled(!isExpanded && dragOffset == 0)
+            .scrollDisabled(!isExpanded)
         }
         .frame(height: currentHeight)
         .frame(maxWidth: .infinity)
         .background(Color.backgroundPrimary)
         .clipShape(RoundedCorner(radius: 20, corners: [.topLeft, .topRight]))
         .shadow(color: Color.black.opacity(0.15), radius: 10, x: 0, y: -5)
-    }
-
-    // MARK: - Drag Gesture
-
-    private var dragGesture: some Gesture {
-        DragGesture()
-            .updating($dragOffset) { value, state, _ in
-                state = value.translation.height
-            }
-            .onEnded { value in
-                let dragAmount = value.translation.height
-                let velocity = value.predictedEndTranslation.height
-
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    // Dragging up (negative) = expand, dragging down (positive) = collapse
-                    if dragAmount < -50 || velocity < -200 {
-                        isExpanded = true
-                    } else if dragAmount > 50 || velocity > 200 {
-                        isExpanded = false
-                    }
-                }
-            }
     }
 
     // MARK: - Drag Handle Area
@@ -128,6 +103,39 @@ struct PortfolioBottomSheet: View {
         }
         .frame(maxWidth: .infinity)
         .background(Color.backgroundPrimary)
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 5)
+                .onChanged { value in
+                    if dragStartHeight == 0 {
+                        dragStartHeight = currentHeight
+                    }
+                    // Calculate new height from the starting position
+                    let newHeight = dragStartHeight - value.translation.height
+                    currentHeight = max(collapsedHeight, min(expandedHeight, newHeight))
+                }
+                .onEnded { value in
+                    let velocity = value.predictedEndTranslation.height - value.translation.height
+
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        // Snap to expanded or collapsed based on position and velocity
+                        if velocity < -150 {
+                            // Fast swipe up -> expand
+                            currentHeight = expandedHeight
+                        } else if velocity > 150 {
+                            // Fast swipe down -> collapse
+                            currentHeight = collapsedHeight
+                        } else {
+                            // Snap to nearest
+                            let midpoint = (collapsedHeight + expandedHeight) / 2
+                            currentHeight = currentHeight > midpoint ? expandedHeight : collapsedHeight
+                        }
+                    }
+
+                    // Reset drag start height
+                    dragStartHeight = 0
+                }
+        )
     }
 
 
