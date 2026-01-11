@@ -147,17 +147,17 @@ struct DashboardView: View {
 
                         // Spacer for bottom sheet
                         Spacer()
-                            .frame(height: geometry.size.height * 0.45)
+                            .frame(height: geometry.size.height * 0.25)
                     }
                 }
                 .refreshable {
                     await handleRefresh()
                 }
 
-                // Bottom Sheet
+                // Bottom Sheet - shows about 35% of screen height
                 bottomSheet
-                    .frame(height: geometry.size.height * 0.6)
-                    .offset(y: contentAppeared ? 0 : geometry.size.height * 0.3)
+                    .frame(height: geometry.size.height * 0.35)
+                    .offset(y: contentAppeared ? 0 : geometry.size.height * 0.2)
                     .animation(.spring(response: 0.6, dampingFraction: 0.8)
                                .delay(DashboardConstants.cardAppearanceDelay * 4),
                                value: contentAppeared)
