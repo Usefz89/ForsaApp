@@ -16,6 +16,7 @@ struct PortfolioBottomSheet: View {
     @State private var searchText = ""
     @State private var currentHeight: CGFloat
     @State private var dragStartHeight: CGFloat = 0
+    @State private var isExpandedState: Bool = false
 
     let collapsedHeight: CGFloat
     let expandedHeight: CGFloat
@@ -77,7 +78,7 @@ struct PortfolioBottomSheet: View {
                 .padding(.horizontal, DashboardConstants.horizontalPadding)
                 .padding(.bottom, 100)
             }
-            .scrollDisabled(!isExpanded)
+            .scrollDisabled(!isExpandedState)
         }
         .frame(height: currentHeight)
         .frame(maxWidth: .infinity)
@@ -95,17 +96,19 @@ struct PortfolioBottomSheet: View {
                 .frame(width: 40, height: 5)
                 .padding(.top, 12)
 
-            // Hint text
-            Text(isExpanded ? "Swipe down to collapse" : "Swipe up for more")
+            // Hint text - use stable state to avoid layout jumps during drag
+            Text(isExpandedState ? "Swipe down to collapse" : "Swipe up for more")
                 .font(.caption2)
                 .foregroundColor(.textTertiary)
                 .padding(.bottom, 8)
+                .animation(nil, value: isExpandedState)
         }
         .frame(maxWidth: .infinity)
+        .frame(height: 50)
         .background(Color.backgroundPrimary)
         .contentShape(Rectangle())
         .gesture(
-            DragGesture(minimumDistance: 5)
+            DragGesture(minimumDistance: 10, coordinateSpace: .global)
                 .onChanged { value in
                     if dragStartHeight == 0 {
                         dragStartHeight = currentHeight
@@ -117,19 +120,26 @@ struct PortfolioBottomSheet: View {
                 .onEnded { value in
                     let velocity = value.predictedEndTranslation.height - value.translation.height
 
+                    var targetExpanded: Bool
+
+                    // Snap to expanded or collapsed based on position and velocity
+                    if velocity < -150 {
+                        // Fast swipe up -> expand
+                        targetExpanded = true
+                    } else if velocity > 150 {
+                        // Fast swipe down -> collapse
+                        targetExpanded = false
+                    } else {
+                        // Snap to nearest
+                        let midpoint = (collapsedHeight + expandedHeight) / 2
+                        targetExpanded = currentHeight > midpoint
+                    }
+
+                    let targetHeight = targetExpanded ? expandedHeight : collapsedHeight
+
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                        // Snap to expanded or collapsed based on position and velocity
-                        if velocity < -150 {
-                            // Fast swipe up -> expand
-                            currentHeight = expandedHeight
-                        } else if velocity > 150 {
-                            // Fast swipe down -> collapse
-                            currentHeight = collapsedHeight
-                        } else {
-                            // Snap to nearest
-                            let midpoint = (collapsedHeight + expandedHeight) / 2
-                            currentHeight = currentHeight > midpoint ? expandedHeight : collapsedHeight
-                        }
+                        currentHeight = targetHeight
+                        isExpandedState = targetExpanded
                     }
 
                     // Reset drag start height
