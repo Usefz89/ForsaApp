@@ -55,6 +55,10 @@ struct TreemapView: View {
             ZStack(alignment: .topLeading) {
                 ForEach(Array(zip(items.indices, items)), id: \.1.id) { index, item in
                     if index < layoutRects.count {
+                        let rect = layoutRects[index]
+                        // Inset each tile by half spacing on all sides to create gaps
+                        let insetRect = rect.insetBy(dx: spacing / 2, dy: spacing / 2)
+
                         TreemapTile(
                             symbol: item.symbol,
                             allocationPercentage: item.allocationPercentage,
@@ -62,12 +66,12 @@ struct TreemapView: View {
                             marketValue: item.marketValue
                         )
                         .frame(
-                            width: max(0, layoutRects[index].width - spacing),
-                            height: max(0, layoutRects[index].height - spacing)
+                            width: max(0, insetRect.width),
+                            height: max(0, insetRect.height)
                         )
                         .offset(
-                            x: layoutRects[index].minX,
-                            y: layoutRects[index].minY
+                            x: insetRect.minX,
+                            y: insetRect.minY
                         )
                     }
                 }
@@ -351,7 +355,7 @@ struct TreemapView: View {
             remainingItems.removeFirst(rowItems.count)
 
             // Update remaining rect
-            if let lastRect = rowRects.last {
+            if !rowRects.isEmpty {
                 let isHorizontal = remainingRect.width >= remainingRect.height
                 if isHorizontal {
                     let usedWidth = rowRects.reduce(0) { $0 + $1.width }

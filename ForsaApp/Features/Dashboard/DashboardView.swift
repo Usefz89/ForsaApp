@@ -45,7 +45,9 @@ struct DashboardView: View {
             .sheet(isPresented: $showingPortfolioDetail) {
                 portfolioDetailSheet
             }
-            .sheet(isPresented: $showDepositSheet) {
+            .sheet(isPresented: $showDepositSheet, onDismiss: {
+                Task { await viewModel.refreshData() }
+            }) {
                 depositSheet
             }
         }
@@ -240,26 +242,8 @@ struct DashboardView: View {
 
     @ViewBuilder
     private var depositSheet: some View {
-        // Placeholder for deposit functionality
-        NavigationStack {
-            VStack(spacing: 20) {
-                Text("Deposit Funds")
-                    .font(.title2)
-                    .fontWeight(.bold)
-
-                Text("Deposit functionality coming soon")
-                    .foregroundColor(.textSecondary)
-            }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") {
-                        showDepositSheet = false
-                    }
-                }
-            }
-        }
-        .presentationDetents([.medium])
+        DepositFlowView()
+            .environmentObject(coordinator)
     }
 
     // MARK: - Overlay
