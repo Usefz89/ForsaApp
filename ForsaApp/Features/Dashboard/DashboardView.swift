@@ -151,9 +151,13 @@ struct DashboardView: View {
                     positions: viewModel.positions,
                     pendingOrders: viewModel.pendingOrders,
                     pendingOrdersSummary: viewModel.pendingOrdersSummary,
+                    portfolioType: coordinator.selectedPortfolio ?? .moderate,
                     onCancelAllOrders: viewModel.hasPendingOrders ? {
                         Task { await viewModel.cancelAllPendingOrders() }
                     } : nil,
+                    onPortfolioTap: {
+                        showingPortfolioSelection = true
+                    },
                     collapsedHeight: geometry.size.height * 0.32,
                     expandedHeight: geometry.size.height * 0.75
                 )

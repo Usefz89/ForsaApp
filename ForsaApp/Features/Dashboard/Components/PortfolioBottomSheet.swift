@@ -11,9 +11,10 @@ struct PortfolioBottomSheet: View {
     let positions: [AlpacaPosition]
     let pendingOrders: [OpenOrder]
     let pendingOrdersSummary: PendingOrdersSummary
+    let portfolioType: RiskLevel
     var onCancelAllOrders: (() -> Void)? = nil
+    var onPortfolioTap: (() -> Void)? = nil
 
-    @State private var searchText = ""
     @State private var currentHeight: CGFloat
     @State private var dragStartHeight: CGFloat = 0
     @State private var isExpandedState: Bool = false
@@ -29,24 +30,21 @@ struct PortfolioBottomSheet: View {
         positions: [AlpacaPosition],
         pendingOrders: [OpenOrder],
         pendingOrdersSummary: PendingOrdersSummary,
+        portfolioType: RiskLevel,
         onCancelAllOrders: (() -> Void)? = nil,
+        onPortfolioTap: (() -> Void)? = nil,
         collapsedHeight: CGFloat = 280,
         expandedHeight: CGFloat = 600
     ) {
         self.positions = positions
         self.pendingOrders = pendingOrders
         self.pendingOrdersSummary = pendingOrdersSummary
+        self.portfolioType = portfolioType
         self.onCancelAllOrders = onCancelAllOrders
+        self.onPortfolioTap = onPortfolioTap
         self.collapsedHeight = collapsedHeight
         self.expandedHeight = expandedHeight
         self._currentHeight = State(initialValue: collapsedHeight)
-    }
-
-    private var filteredPositions: [AlpacaPosition] {
-        if searchText.isEmpty {
-            return positions
-        }
-        return positions.filter { $0.symbol.localizedCaseInsensitiveContains(searchText) }
     }
 
     var body: some View {
@@ -54,8 +52,10 @@ struct PortfolioBottomSheet: View {
             // Drag handle area
             dragHandleArea
 
-            // Search bar
-            searchBar
+            // Portfolio Type Header
+            portfolioTypeHeader
+                .padding(.horizontal, DashboardConstants.horizontalPadding)
+                .padding(.bottom, 16)
 
             // Content
             ScrollView {
@@ -65,9 +65,9 @@ struct PortfolioBottomSheet: View {
                         pendingOrdersSection
                     }
 
-                    // Asset Allocation / Holdings Section
+                    // Asset Allocation / Treemap Section
                     if !positions.isEmpty {
-                        holdingsSection
+                        treemapSection
                     }
 
                     // Empty state
@@ -148,30 +148,59 @@ struct PortfolioBottomSheet: View {
         )
     }
 
+    // MARK: - Portfolio Type Header
 
-    // MARK: - Search Bar
+    private var portfolioTypeHeader: some View {
+        Button(action: { onPortfolioTap?() }) {
+            HStack(spacing: 12) {
+                // Icon Container
+                ZStack {
+                    Circle()
+                        .fill(portfolioType.color.opacity(0.15))
+                        .frame(width: 50, height: 50)
 
-    private var searchBar: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "magnifyingglass")
-                .foregroundColor(.textTertiary)
+                    Image(systemName: portfolioType.icon)
+                        .font(.system(size: 24, weight: .semibold))
+                        .foregroundColor(portfolioType.color)
+                }
 
-            TextField("Search portfolio", text: $searchText)
-                .font(.body)
-                .foregroundColor(.textPrimary)
+                // Text Content
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 4) {
+                        Text(portfolioType.title + " Portfolio")
+                            .font(.headline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.textPrimary)
 
-            if !searchText.isEmpty {
-                Button(action: { searchText = "" }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(.textTertiary)
+                        if onPortfolioTap != nil {
+                            Image(systemName: "chevron.down")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.textTertiary)
+                        }
+                    }
+
+                    Text(portfolioType.shortDescription)
+                        .font(.caption)
+                        .foregroundColor(.textSecondary)
+                }
+
+                Spacer()
+
+                // Change button indicator
+                if onPortfolioTap != nil {
+                    Text("Change")
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .foregroundColor(portfolioType.color)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(portfolioType.color.opacity(0.1))
+                        .cornerRadius(8)
                 }
             }
         }
-        .padding(12)
-        .background(Color.backgroundSecondary)
-        .cornerRadius(12)
-        .padding(.horizontal, DashboardConstants.horizontalPadding)
-        .padding(.bottom, 16)
+        .buttonStyle(PlainButtonStyle())
     }
 
     // MARK: - Pending Orders Section
@@ -229,9 +258,9 @@ struct PortfolioBottomSheet: View {
         }
     }
 
-    // MARK: - Holdings Section
+    // MARK: - Treemap Section
 
-    private var holdingsSection: some View {
+    private var treemapSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("ASSET ALLOCATION")
@@ -242,23 +271,13 @@ struct PortfolioBottomSheet: View {
 
                 Spacer()
 
-                Text("\(filteredPositions.count) assets")
+                Text("\(positions.count) assets")
                     .font(.caption)
                     .foregroundColor(.textTertiary)
             }
 
-            ForsaCard(padding: EdgeInsets(top: 12, leading: 12, bottom: 12, trailing: 12)) {
-                VStack(spacing: 0) {
-                    ForEach(Array(filteredPositions.enumerated()), id: \.element.id) { index, position in
-                        HoldingSheetRow(position: position)
-
-                        if index < filteredPositions.count - 1 {
-                            Divider()
-                                .padding(.vertical, 8)
-                        }
-                    }
-                }
-            }
+            TreemapView(positions: positions)
+                .animation(.spring(response: 0.3, dampingFraction: 0.8), value: positions.count)
         }
     }
 
@@ -280,75 +299,6 @@ struct PortfolioBottomSheet: View {
                 .multilineTextAlignment(.center)
         }
         .padding(.vertical, 40)
-    }
-}
-
-// MARK: - Holding Sheet Row
-
-private struct HoldingSheetRow: View {
-    let position: AlpacaPosition
-
-    private var gainLoss: Double {
-        position.marketValueValue - (Double(position.costBasis) ?? 0)
-    }
-
-    private var gainLossPercentage: Double {
-        let costBasis = Double(position.costBasis) ?? 0
-        guard costBasis > 0 else { return 0 }
-        return (gainLoss / costBasis) * 100
-    }
-
-    private var isPositive: Bool {
-        gainLoss >= 0
-    }
-
-    var body: some View {
-        HStack(spacing: 12) {
-            // Symbol Badge
-            ZStack {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.primaryPurple.opacity(0.1))
-                    .frame(width: 40, height: 40)
-
-                Text(String(position.symbol.prefix(2)))
-                    .font(.caption)
-                    .fontWeight(.bold)
-                    .foregroundColor(.primaryPurple)
-            }
-
-            // Symbol & Quantity
-            VStack(alignment: .leading, spacing: 2) {
-                Text(position.symbol)
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.textPrimary)
-
-                Text("\(String(format: "%.4f", position.qtyValue)) shares")
-                    .font(.caption)
-                    .foregroundColor(.textSecondary)
-            }
-
-            Spacer()
-
-            // Value & Change
-            VStack(alignment: .trailing, spacing: 2) {
-                Text("$\(String(format: "%.2f", position.marketValueValue))")
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.textPrimary)
-
-                HStack(spacing: 2) {
-                    Image(systemName: isPositive ? "arrow.up.right" : "arrow.down.right")
-                        .font(.caption2)
-
-                    Text("\(isPositive ? "+" : "")\(String(format: "%.2f", gainLossPercentage))%")
-                        .font(.caption)
-                        .fontWeight(.medium)
-                }
-                .foregroundColor(isPositive ? .gainGreen : .lossRed)
-            }
-        }
-        .padding(.vertical, 4)
     }
 }
 
@@ -431,6 +381,7 @@ struct RoundedCorner: Shape {
                 positions: [],
                 pendingOrders: [],
                 pendingOrdersSummary: .empty,
+                portfolioType: .growth,
                 collapsedHeight: 280,
                 expandedHeight: 600
             )
