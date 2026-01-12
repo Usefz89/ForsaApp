@@ -77,7 +77,6 @@ struct TreemapTile: View {
             }
             .padding(10)
         }
-        .frame(minWidth: 80, minHeight: 80)
     }
 }
 

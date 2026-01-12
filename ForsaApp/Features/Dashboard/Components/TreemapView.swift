@@ -46,36 +46,34 @@ struct TreemapView: View {
     }
 
     var body: some View {
+        let itemsToRender = items
+
         GeometryReader { geometry in
+            let size = geometry.size
             let layoutRects = calculateTreemapLayout(
-                items: items,
-                in: CGRect(origin: .zero, size: geometry.size)
+                items: itemsToRender,
+                in: CGRect(origin: .zero, size: size)
             )
 
-            ZStack(alignment: .topLeading) {
-                ForEach(Array(zip(items.indices, items)), id: \.1.id) { index, item in
-                    if index < layoutRects.count {
-                        let rect = layoutRects[index]
-                        // Inset each tile by half spacing on all sides to create gaps
-                        let insetRect = rect.insetBy(dx: spacing / 2, dy: spacing / 2)
+            Color.clear
+                .overlay {
+                    ForEach(Array(itemsToRender.enumerated()), id: \.element.id) { index, item in
+                        if index < layoutRects.count {
+                            let rect = layoutRects[index]
+                            // Inset the rect by spacing/2 on all sides
+                            let insetRect = rect.insetBy(dx: spacing / 2, dy: spacing / 2)
 
-                        TreemapTile(
-                            symbol: item.symbol,
-                            allocationPercentage: item.allocationPercentage,
-                            changePercentage: item.changePercentage,
-                            marketValue: item.marketValue
-                        )
-                        .frame(
-                            width: max(0, insetRect.width),
-                            height: max(0, insetRect.height)
-                        )
-                        .offset(
-                            x: insetRect.minX,
-                            y: insetRect.minY
-                        )
+                            TreemapTile(
+                                symbol: item.symbol,
+                                allocationPercentage: item.allocationPercentage,
+                                changePercentage: item.changePercentage,
+                                marketValue: item.marketValue
+                            )
+                            .frame(width: insetRect.width, height: insetRect.height)
+                            .position(x: insetRect.midX, y: insetRect.midY)
+                        }
                     }
                 }
-            }
         }
         .frame(height: calculateHeight(for: positions.count))
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: positions.count)
