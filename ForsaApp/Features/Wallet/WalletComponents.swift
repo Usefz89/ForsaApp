@@ -7,7 +7,144 @@
 
 import SwiftUI
 
-// MARK: - Account Overview Row
+// MARK: - Account Stat Row (Clean Design)
+
+struct AccountStatRow: View {
+    let icon: String
+    let iconColor: Color
+    let title: String
+    let value: String
+    var showChevron: Bool = false
+    var action: (() -> Void)? = nil
+
+    var body: some View {
+        Button(action: { action?() }) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.title3)
+                    .foregroundColor(iconColor)
+                    .frame(width: 32, height: 32)
+                    .background(iconColor.opacity(0.12))
+                    .cornerRadius(8)
+
+                Text(title)
+                    .font(.callout)
+                    .foregroundColor(.textPrimary)
+
+                Spacer()
+
+                Text(value)
+                    .font(.callout)
+                    .fontWeight(.medium)
+                    .foregroundColor(.textSecondary)
+
+                if showChevron {
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundColor(.textTertiary)
+                }
+            }
+            .padding(.vertical, 14)
+            .padding(.horizontal, 16)
+            .background(Color.backgroundCard)
+            .cornerRadius(12)
+        }
+        .buttonStyle(PlainButtonStyle())
+        .disabled(action == nil)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title): \(value)")
+    }
+}
+
+// MARK: - Pending Transactions Banner (Compact)
+
+struct PendingTransactionsBanner: View {
+    let count: Int
+    let totalAmount: String
+    let expectedDate: String
+    var onTap: (() -> Void)? = nil
+
+    var body: some View {
+        Button(action: { onTap?() }) {
+            HStack(spacing: 12) {
+                Image(systemName: "clock.fill")
+                    .font(.title3)
+                    .foregroundColor(.warningYellow)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(count) Pending Deposit\(count > 1 ? "s" : "")")
+                        .font(.callout)
+                        .fontWeight(.medium)
+                        .foregroundColor(.textPrimary)
+
+                    Text("Processing • Expected \(expectedDate)")
+                        .font(.caption)
+                        .foregroundColor(.textSecondary)
+                }
+
+                Spacer()
+
+                Text(totalAmount)
+                    .font(.callout)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.warningYellow)
+            }
+            .padding(16)
+            .background(Color.warningYellow.opacity(0.1))
+            .cornerRadius(12)
+        }
+        .buttonStyle(PlainButtonStyle())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(count) pending deposits totaling \(totalAmount)")
+    }
+}
+
+// MARK: - Clean Transaction Row
+
+struct CleanTransactionRow: View {
+    let transaction: DepositTransaction
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: transaction.paymentMethod.iconName)
+                .font(.callout)
+                .foregroundColor(.primaryGreen)
+                .frame(width: 32, height: 32)
+                .background(Color.primaryGreen.opacity(0.12))
+                .cornerRadius(8)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(transaction.paymentMethod.displayName)
+                    .font(.callout)
+                    .foregroundColor(.textPrimary)
+
+                Text(transaction.createdAt, style: .date)
+                    .font(.caption)
+                    .foregroundColor(.textSecondary)
+            }
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("+\(transaction.formattedAmount)")
+                    .font(.callout)
+                    .fontWeight(.medium)
+                    .foregroundColor(.gainGreen)
+
+                if transaction.status != .completed {
+                    Text(transaction.status.displayName)
+                        .font(.caption2)
+                        .foregroundColor(.warningYellow)
+                }
+            }
+        }
+        .padding(.vertical, 8)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Deposit of \(transaction.formattedAmount) via \(transaction.paymentMethod.displayName)")
+    }
+}
+
+// MARK: - Account Overview Row (Legacy - kept for compatibility)
 
 struct AccountOverviewRow: View {
     let title: String

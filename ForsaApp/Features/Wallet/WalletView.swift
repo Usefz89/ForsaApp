@@ -10,22 +10,22 @@ import SwiftUI
 struct WalletView: View {
     @EnvironmentObject var coordinator: AppCoordinator
     @StateObject private var viewModel = WalletViewModel()
-    
+
     // MARK: - State
     @State private var contentAppeared = false
-    
+
     /// Check if user is using a demo account (not a real signed-up user)
     private var isDemoAccount: Bool {
         coordinator.currentUser?.isDemoAccount ?? false
     }
 
     // MARK: - Body
-    
+
     var body: some View {
         NavigationStack {
             ZStack {
                 Color.backgroundPrimary.ignoresSafeArea()
-                
+
                 if viewModel.isLoading && !viewModel.hasLoadedOnce {
                     loadingView
                         .transition(.opacity)
@@ -55,7 +55,6 @@ struct WalletView: View {
         }
         .onAppear {
             viewModel.loadData()
-            // Check for uninvested cash and auto-invest if available
             Task {
                 let didInvest = await coordinator.checkAndAutoInvestAvailableCash()
                 if didInvest {
@@ -65,78 +64,103 @@ struct WalletView: View {
         }
         .animation(.easeInOut(duration: 0.3), value: viewModel.isLoading)
     }
-    
+
     // MARK: - Loading View
-    
+
     private var loadingView: some View {
         VStack(spacing: WalletConstants.cardSpacing) {
             Spacer()
-            
+
             ZStack {
                 Circle()
                     .fill(Color.primaryPurple.opacity(0.1))
                     .frame(width: WalletConstants.loadingIconSize, height: WalletConstants.loadingIconSize)
-                
+
                 Image(systemName: "wallet.pass.fill")
                     .font(.system(size: WalletConstants.loadingIconInnerSize))
                     .foregroundColor(.primaryPurple)
             }
-            
+
             VStack(spacing: 8) {
                 Text(WalletStrings.loadingWallet)
                     .font(.headline)
                     .foregroundColor(.textPrimary)
-                
+
                 Text(WalletStrings.fetchingData)
                     .font(.subheadline)
                     .foregroundColor(.textSecondary)
             }
-            
+
             ProgressView()
                 .progressViewStyle(CircularProgressViewStyle(tint: .primaryPurple))
                 .scaleEffect(1.2)
-            
+
             Spacer()
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(WalletStrings.loadingWallet)
     }
-    
+
     // MARK: - Content View
-    
+
     private var contentView: some View {
         ScrollView {
-            VStack(spacing: WalletConstants.cardSpacing) {
+            VStack(spacing: 0) {
+                // Error Banner
                 if let error = viewModel.errorMessage {
                     WalletErrorBanner(message: error) {
                         viewModel.clearError()
                     }
+                    .padding(.horizontal, WalletConstants.horizontalPadding)
+                    .padding(.bottom, 16)
                     .transition(.move(edge: .top).combined(with: .opacity))
                 }
-                
+
+                // Balance Header (Simplified)
                 balanceHeader
                     .opacity(contentAppeared ? 1 : 0)
                     .offset(y: contentAppeared ? 0 : 20)
-                
+
+                // Action Buttons
                 actionButtons
+                    .padding(.top, 20)
+                    .padding(.horizontal, WalletConstants.horizontalPadding)
                     .opacity(contentAppeared ? 1 : 0)
                     .offset(y: contentAppeared ? 0 : 20)
                     .animation(.spring(response: WalletConstants.springResponse,
                                        dampingFraction: WalletConstants.springDamping)
                                .delay(WalletConstants.cardAppearanceDelay),
                                value: contentAppeared)
-                
-                accountOverview
+
+                // Pending Transactions Banner (if any)
+                if viewModel.hasPendingTransactions {
+                    pendingBanner
+                        .padding(.top, 16)
+                        .padding(.horizontal, WalletConstants.horizontalPadding)
+                        .opacity(contentAppeared ? 1 : 0)
+                        .offset(y: contentAppeared ? 0 : 20)
+                        .animation(.spring(response: WalletConstants.springResponse,
+                                           dampingFraction: WalletConstants.springDamping)
+                                   .delay(WalletConstants.cardAppearanceDelay * 1.5),
+                                   value: contentAppeared)
+                }
+
+                // Account Stats
+                accountStats
+                    .padding(.top, 24)
+                    .padding(.horizontal, WalletConstants.horizontalPadding)
                     .opacity(contentAppeared ? 1 : 0)
                     .offset(y: contentAppeared ? 0 : 20)
                     .animation(.spring(response: WalletConstants.springResponse,
                                        dampingFraction: WalletConstants.springDamping)
                                .delay(WalletConstants.cardAppearanceDelay * 2),
                                value: contentAppeared)
-                
-                if viewModel.hasPendingTransactions {
-                    pendingTransactionsSection
-                        .transition(.move(edge: .leading).combined(with: .opacity))
+
+                // Recent Activity
+                if viewModel.hasTransactions {
+                    recentActivity
+                        .padding(.top, 24)
+                        .padding(.horizontal, WalletConstants.horizontalPadding)
                         .opacity(contentAppeared ? 1 : 0)
                         .offset(y: contentAppeared ? 0 : 20)
                         .animation(.spring(response: WalletConstants.springResponse,
@@ -144,18 +168,7 @@ struct WalletView: View {
                                    .delay(WalletConstants.cardAppearanceDelay * 3),
                                    value: contentAppeared)
                 }
-                
-                if viewModel.hasTransactions {
-                    recentTransactionsSection
-                        .opacity(contentAppeared ? 1 : 0)
-                        .offset(y: contentAppeared ? 0 : 20)
-                        .animation(.spring(response: WalletConstants.springResponse,
-                                           dampingFraction: WalletConstants.springDamping)
-                                   .delay(WalletConstants.cardAppearanceDelay * 4),
-                                   value: contentAppeared)
-                }
             }
-            .padding(.horizontal, WalletConstants.horizontalPadding)
             .padding(.top, WalletConstants.contentTopPadding)
             .padding(.bottom, WalletConstants.tabBarBottomPadding)
         }
@@ -173,275 +186,145 @@ struct WalletView: View {
         }
     }
 
-    // MARK: - Balance Header
-    
+    // MARK: - Balance Header (Simplified)
+
     private var balanceHeader: some View {
-        ForsaCard {
-            VStack(spacing: 20) {
-                // Available Balance
-                VStack(spacing: 4) {
-                    Text(WalletStrings.availableBalance)
-                        .font(.caption)
-                        .foregroundColor(.textSecondary)
-                    
-                    Text(viewModel.cashAccount.formattedBalance)
-                        .font(.system(size: WalletConstants.balanceFontSize, weight: .bold, design: .rounded))
-                        .foregroundColor(.primaryPurple)
-                }
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel("\(WalletStrings.availableBalance): \(viewModel.cashAccount.formattedBalance)")
-                
-                // Balance Breakdown
-                balanceBreakdown
-                
-                // Pending Transfers Alert
-                if viewModel.pendingAmount > 0 {
-                    pendingFundsAlert
-                        .transition(.scale.combined(with: .opacity))
-                }
-                
-                // Demo Account Notice
-                if isDemoAccount {
-                    demoAccountNotice
-                        .transition(.scale.combined(with: .opacity))
-                }
-                
-                // Account Status
-                accountStatusBadge
-            }
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(WalletStrings.balanceCardAccessibility)
-    }
-    
-    private var balanceBreakdown: some View {
-        HStack(spacing: 0) {
-            BalanceBreakdownItem(
-                icon: "bolt.circle.fill",
-                label: WalletStrings.buyingPower,
-                value: "$\(String(format: "%.2f", viewModel.buyingPower))",
-                color: .primaryBlue
-            )
-            
-            Divider().frame(height: WalletConstants.breakdownDividerHeight)
-            
-            BalanceBreakdownItem(
-                icon: "arrow.down.circle.fill",
-                label: WalletStrings.deposited,
-                value: "$\(String(format: "%.2f", viewModel.cashAccount.totalDeposited))",
-                color: .successGreen
-            )
-            
-            Divider().frame(height: WalletConstants.breakdownDividerHeight)
-            
-            BalanceBreakdownItem(
-                icon: "arrow.up.circle.fill",
-                label: WalletStrings.withdrawn,
-                value: "$\(String(format: "%.2f", viewModel.cashAccount.totalWithdrawn))",
-                color: .warningYellow
-            )
-        }
-        .padding(.vertical, WalletConstants.breakdownVerticalPadding)
-        .background(Color.backgroundSecondary)
-        .cornerRadius(10)
-    }
-    
-    private var pendingFundsAlert: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "info.circle.fill")
-                .foregroundColor(.warningYellow)
-            
-            VStack(alignment: .leading, spacing: 2) {
-                Text(WalletStrings.fundsProcessing)
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.textPrimary)
-                Text("\(viewModel.formattedPendingAmount) will be available within 1-2 business days")
-                    .font(.caption2)
-                    .foregroundColor(.textSecondary)
-            }
-            
-            Spacer()
-        }
-        .padding(12)
-        .background(Color.warningYellow.opacity(0.1))
-        .cornerRadius(10)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(WalletStrings.fundsProcessing): \(viewModel.formattedPendingAmount) pending")
-    }
-    
-    private var demoAccountNotice: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "testtube.2")
-                .foregroundColor(.primaryOrange)
-            
-            VStack(alignment: .leading, spacing: 2) {
-                Text(WalletStrings.demoAccount)
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundColor(.textPrimary)
-                Text(WalletStrings.demoAccountDescription)
-                    .font(.caption2)
-                    .foregroundColor(.textSecondary)
-            }
-            
-            Spacer()
-        }
-        .padding(12)
-        .background(Color.primaryOrange.opacity(0.1))
-        .cornerRadius(10)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(WalletStrings.demoAccount)
-    }
-    
-    private var accountStatusBadge: some View {
-        HStack {
-            Image(systemName: "checkmark.shield.fill")
-                .font(.callout)
-                .foregroundColor(.halalGreen)
+        VStack(spacing: 8) {
+            Text(WalletStrings.availableBalance)
+                .font(.caption)
+                .foregroundColor(.textSecondary)
 
-            Text(WalletStrings.accountVerified)
-                .font(.callout)
-                .foregroundColor(.halalGreen)
-
-            Spacer()
-
-            Text(viewModel.cashAccount.verificationLevel.displayName)
-                .font(.caption1)
-                .fontWeight(.medium)
+            Text(viewModel.cashAccount.formattedBalance)
+                .font(.system(size: 42, weight: .bold, design: .rounded))
                 .foregroundColor(.primaryPurple)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(Color.primaryPurple.opacity(0.1))
-                .cornerRadius(4)
         }
+        .padding(.top, 24)
+        .padding(.bottom, 8)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(WalletStrings.accountVerified), \(viewModel.cashAccount.verificationLevel.displayName)")
+        .accessibilityLabel("\(WalletStrings.availableBalance): \(viewModel.cashAccount.formattedBalance)")
     }
 
-    // MARK: - Action Buttons
-    
-    private var actionButtons: some View {
-        HStack(spacing: WalletConstants.actionButtonSpacing) {
-            // Deposit button
-            VStack(spacing: 4) {
-                Button(action: {
-                    if !isDemoAccount {
-                        viewModel.showDepositFlow()
-                    }
-                }) {
-                    HStack {
-                        Image(systemName: "plus.circle.fill")
-                        Text(WalletStrings.depositFunds)
-                    }
-                    .font(.subheadline)
-                    .fontWeight(.semibold)
-                    .foregroundColor(isDemoAccount ? .textTertiary : .white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: WalletConstants.actionButtonHeight)
-                    .background(isDemoAccount ? Color.backgroundSecondary : Color.primaryPurple)
-                    .cornerRadius(WalletConstants.actionButtonCornerRadius)
-                }
-                .disabled(isDemoAccount)
-                .accessibilityLabel(WalletStrings.depositButtonAccessibility)
-                .accessibilityHint(isDemoAccount ? WalletStrings.disabledInDemo : "")
-                
-                if isDemoAccount {
-                    Text(WalletStrings.disabledInDemo)
-                        .font(.caption2)
-                        .foregroundColor(.textTertiary)
-                }
-            }
-            .frame(maxWidth: .infinity)
+    // MARK: - Action Buttons (Equal Width)
 
-            ForsaButton(WalletStrings.withdraw, style: .outline, size: .large) {
+    private var actionButtons: some View {
+        HStack(spacing: 12) {
+            // Deposit Button
+            Button(action: {
+                if !isDemoAccount {
+                    viewModel.showDepositFlow()
+                }
+            }) {
+                HStack(spacing: 6) {
+                    Image(systemName: "plus.circle.fill")
+                    Text(WalletStrings.depositFunds)
+                }
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundColor(isDemoAccount ? .textTertiary : .white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 52)
+                .background(isDemoAccount ? Color.backgroundSecondary : Color.primaryPurple)
+                .cornerRadius(12)
+            }
+            .disabled(isDemoAccount)
+            .accessibilityLabel(WalletStrings.depositButtonAccessibility)
+            .accessibilityHint(isDemoAccount ? WalletStrings.disabledInDemo : "")
+
+            // Withdraw Button
+            Button(action: {
                 viewModel.showWithdrawFlow()
+            }) {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.up.circle")
+                    Text(WalletStrings.withdraw)
+                }
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundColor(.primaryPurple)
+                .frame(maxWidth: .infinity)
+                .frame(height: 52)
+                .background(Color.clear)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.primaryPurple, lineWidth: 1.5)
+                )
             }
             .accessibilityLabel(WalletStrings.withdrawButtonAccessibility)
         }
     }
-    
-    // MARK: - Account Overview
-    
-    private var accountOverview: some View {
-        ForsaCard {
-            VStack(alignment: .leading, spacing: WalletConstants.sectionSpacing) {
-                Text(WalletStrings.accountOverview)
-                    .font(.headline)
-                    .foregroundColor(.textPrimary)
 
-                VStack(spacing: 12) {
-                    AccountOverviewRow(
-                        title: WalletStrings.totalDeposited,
-                        value: "$\(String(format: "%.2f", viewModel.cashAccount.totalDeposited))",
-                        icon: "arrow.down.circle.fill",
-                        color: .primaryGreen
-                    )
+    // MARK: - Pending Banner (Compact)
 
-                    AccountOverviewRow(
-                        title: WalletStrings.totalWithdrawn,
-                        value: "$\(String(format: "%.2f", viewModel.cashAccount.totalWithdrawn))",
-                        icon: "arrow.up.circle.fill",
-                        color: .primaryBlue
-                    )
+    private var pendingBanner: some View {
+        PendingTransactionsBanner(
+            count: viewModel.pendingTransactions.count,
+            totalAmount: viewModel.formattedPendingAmount,
+            expectedDate: viewModel.pendingTransactions.first?.estimatedSettlementTime ?? "1-2 days"
+        )
+    }
 
-                    if viewModel.availableBalance != viewModel.cashAccount.balance {
-                        AccountOverviewRow(
-                            title: WalletStrings.availableBalance,
-                            value: viewModel.formattedAvailableBalance,
-                            icon: "dollarsign.circle.fill",
-                            color: .primaryPurple
-                        )
-                    }
-                }
-            }
+    // MARK: - Account Stats (Flat Rows)
+
+    private var accountStats: some View {
+        VStack(spacing: 4) {
+            AccountStatRow(
+                icon: "bolt.circle.fill",
+                iconColor: .primaryBlue,
+                title: WalletStrings.buyingPower,
+                value: "$\(String(format: "%.2f", viewModel.buyingPower))"
+            )
+
+            AccountStatRow(
+                icon: "arrow.down.circle.fill",
+                iconColor: .primaryGreen,
+                title: WalletStrings.totalDeposited,
+                value: "$\(String(format: "%.2f", viewModel.cashAccount.totalDeposited))"
+            )
+
+            AccountStatRow(
+                icon: "arrow.up.circle.fill",
+                iconColor: .primaryOrange,
+                title: WalletStrings.totalWithdrawn,
+                value: "$\(String(format: "%.2f", viewModel.cashAccount.totalWithdrawn))"
+            )
         }
     }
 
-    // MARK: - Pending Transactions
-    
-    private var pendingTransactionsSection: some View {
-        VStack(alignment: .leading, spacing: WalletConstants.sectionSpacing) {
-            Text(WalletStrings.pendingTransactions)
+    // MARK: - Recent Activity
+
+    private var recentActivity: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(WalletStrings.recentTransactions)
                 .font(.headline)
                 .foregroundColor(.textPrimary)
 
-            VStack(spacing: 12) {
-                ForEach(viewModel.pendingTransactions) { transaction in
-                    PendingTransactionCard(transaction: transaction)
-                        .accessibilityElement(children: .combine)
-                        .accessibilityLabel("Pending deposit of \(transaction.formattedAmount)")
-                }
-            }
-        }
-    }
-
-    // MARK: - Recent Transactions
-    
-    private var recentTransactionsSection: some View {
-        VStack(alignment: .leading, spacing: WalletConstants.sectionSpacing) {
-            HStack {
-                Text(WalletStrings.recentTransactions)
-                    .font(.headline)
-                    .foregroundColor(.textPrimary)
-
-                Spacer()
-
-                NavigationLink(WalletStrings.viewAll) {
-                    TransactionHistoryView(transactions: viewModel.allTransactions)
-                }
-                .font(.callout)
-                .foregroundColor(.primaryPurple)
-                .accessibilityLabel("View all transactions")
-            }
-
-            VStack(spacing: 12) {
+            VStack(spacing: 0) {
                 ForEach(viewModel.recentTransactions) { transaction in
-                    CashTransactionRowView(transaction: transaction)
-                        .accessibilityElement(children: .combine)
-                        .accessibilityLabel(WalletStrings.transactionAccessibility)
+                    CleanTransactionRow(transaction: transaction)
+
+                    if transaction.id != viewModel.recentTransactions.last?.id {
+                        Divider()
+                            .padding(.leading, 44)
+                    }
                 }
             }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(Color.backgroundCard)
+            .cornerRadius(12)
+
+            // View All Button (Centered)
+            NavigationLink {
+                TransactionHistoryView(transactions: viewModel.allTransactions)
+            } label: {
+                Text(WalletStrings.viewAll)
+                    .font(.callout)
+                    .fontWeight(.medium)
+                    .foregroundColor(.primaryPurple)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 4)
+            }
+            .accessibilityLabel("View all transactions")
         }
     }
 }
@@ -453,7 +336,7 @@ struct BalanceBreakdownItem: View {
     let label: String
     let value: String
     let color: Color
-    
+
     var body: some View {
         VStack(spacing: 4) {
             HStack(spacing: 4) {
@@ -478,18 +361,18 @@ struct BalanceBreakdownItem: View {
 struct WalletErrorBanner: View {
     let message: String
     let onDismiss: () -> Void
-    
+
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundColor(.errorRed)
-            
+
             Text(message)
                 .font(.caption)
                 .foregroundColor(.errorRed)
-            
+
             Spacer()
-            
+
             Button(action: onDismiss) {
                 Image(systemName: "xmark.circle.fill")
                     .foregroundColor(.errorRed.opacity(0.7))
