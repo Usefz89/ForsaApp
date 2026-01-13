@@ -189,6 +189,10 @@ private struct TreemapRecursiveView: View {
 
 // MARK: - Treemap View
 
+// MARK: - Treemap View
+
+// MARK: - Treemap View
+
 struct AssetAllocationTreemapView: View {
     let positions: [AlpacaPosition]
     let spacing: CGFloat = 4 // Small spacing as requested
@@ -201,9 +205,39 @@ struct AssetAllocationTreemapView: View {
     }
 
     var body: some View {
+        let screenWidth = UIScreen.main.bounds.width - 32 // Horizontal padding approximation
+        let dynamicHeight = calculateDynamicHeight(width: screenWidth)
+        
         TreemapRootView(items: items, spacing: spacing)
-            .frame(height: 300) // Fixed height to ensure visibility in scrollviews
+            .frame(height: dynamicHeight)
             .animation(.spring(response: 0.3, dampingFraction: 0.8), value: positions.count)
+    }
+    
+    private func calculateDynamicHeight(width: CGFloat) -> CGFloat {
+        guard !items.isEmpty, width > 0 else { return 300 }
+        
+        // Find smallest allocation (floor at 2% for calculation purposes to avoid infinite height)
+        let minAllocation = items.map { $0.allocationPercentage }.min() ?? 100
+        let effectiveMinAllocation = max(minAllocation, 2.0)
+        
+        // Define minimum legible dimensions for the smallest tile to fit text
+        // 65x50 is roughly the size of an app icon, big enough for 3 lines of small text
+        let minTileWidth: CGFloat = 65
+        let minTileHeight: CGFloat = 50
+        let minTileArea = minTileWidth * minTileHeight
+        
+        // Calculate Total Area required
+        // Relation: SmallestTileArea = TotalArea * (SmallestAlloc / 100)
+        // Therefore: TotalArea = SmallestTileArea / (SmallestAlloc / 100)
+        let requiredTotalArea = minTileArea / (effectiveMinAllocation / 100.0)
+        
+        // View Height = TotalArea / View Width
+        let calculatedHeight = requiredTotalArea / width
+        
+        // Clamp to reasonable visual bounds
+        // Min 300: Keeps the chart looking substantial even with few assets
+        // Max 900: Prevents it from becoming a "skyscraper" on huge portfolios with dust
+        return max(300, min(calculatedHeight, 900))
     }
 }
 
