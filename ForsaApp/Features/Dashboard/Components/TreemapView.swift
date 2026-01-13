@@ -32,97 +32,69 @@ struct TreemapItem: Identifiable {
     }
 }
 
-// MARK: - Treemap View
+// MARK: - Treemap Layout View (Handles absolute positioning)
 
-struct TreemapView: View {
-    let positions: [AlpacaPosition]
-    let spacing: CGFloat = 6
-
-    private var items: [TreemapItem] {
-        let totalValue = positions.reduce(0) { $0 + $1.marketValueValue }
-        return positions
-            .map { TreemapItem(from: $0, totalValue: totalValue) }
-            .sorted { $0.marketValue > $1.marketValue }
-    }
+private struct TreemapLayoutView: View {
+    let items: [TreemapItem]
+    let spacing: CGFloat
 
     var body: some View {
-        let itemsToRender = items
-
         GeometryReader { geometry in
-            let size = geometry.size
-            let layoutRects = calculateTreemapLayout(
-                items: itemsToRender,
-                in: CGRect(origin: .zero, size: size)
-            )
+            let rects = calculateRects(in: geometry.size)
 
-            Color.clear
-                .overlay {
-                    ForEach(Array(itemsToRender.enumerated()), id: \.element.id) { index, item in
-                        if index < layoutRects.count {
-                            let rect = layoutRects[index]
-                            // Inset the rect by spacing/2 on all sides
-                            let insetRect = rect.insetBy(dx: spacing / 2, dy: spacing / 2)
+            ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                if index < rects.count {
+                    let rect = rects[index]
+                    let insetRect = rect.insetBy(dx: spacing / 2, dy: spacing / 2)
 
-                            TreemapTile(
-                                symbol: item.symbol,
-                                allocationPercentage: item.allocationPercentage,
-                                changePercentage: item.changePercentage,
-                                marketValue: item.marketValue
-                            )
-                            .frame(width: insetRect.width, height: insetRect.height)
-                            .position(x: insetRect.midX, y: insetRect.midY)
-                        }
-                    }
+                    TreemapTile(
+                        symbol: item.symbol,
+                        allocationPercentage: item.allocationPercentage,
+                        changePercentage: item.changePercentage,
+                        marketValue: item.marketValue
+                    )
+                    .frame(width: max(0, insetRect.width), height: max(0, insetRect.height))
+                    .offset(x: insetRect.minX, y: insetRect.minY)
                 }
-        }
-        .frame(height: calculateHeight(for: positions.count))
-        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: positions.count)
-    }
-
-    // MARK: - Layout Calculation
-
-    private func calculateHeight(for count: Int) -> CGFloat {
-        switch count {
-        case 0: return 0
-        case 1: return 120
-        case 2...4: return 220
-        case 5...6: return 320
-        default: return min(CGFloat(((count + 1) / 2) * 110), 450)
+            }
         }
     }
 
-    private func calculateTreemapLayout(items: [TreemapItem], in rect: CGRect) -> [CGRect] {
+    private func calculateRects(in size: CGSize) -> [CGRect] {
+        TreemapCalculator.calculateLayout(
+            items: items,
+            in: CGRect(origin: .zero, size: size)
+        )
+    }
+}
+
+// MARK: - Layout Calculator
+
+private enum TreemapCalculator {
+    static func calculateLayout(items: [TreemapItem], in rect: CGRect) -> [CGRect] {
         guard !items.isEmpty else { return [] }
 
         let count = items.count
 
-        // Simple grid layouts for small counts
         switch count {
         case 1:
             return [rect]
-
         case 2:
             return layoutTwoItems(items: items, in: rect)
-
         case 3:
             return layoutThreeItems(items: items, in: rect)
-
         case 4:
             return layoutFourItems(items: items, in: rect)
-
         case 5:
             return layoutFiveItems(items: items, in: rect)
-
         case 6:
             return layoutSixItems(items: items, in: rect)
-
         default:
             return squarifiedLayout(items: items, in: rect)
         }
     }
 
-    // Two items: side by side proportionally
-    private func layoutTwoItems(items: [TreemapItem], in rect: CGRect) -> [CGRect] {
+    static func layoutTwoItems(items: [TreemapItem], in rect: CGRect) -> [CGRect] {
         let total = items.reduce(0) { $0 + $1.marketValue }
         guard total > 0 else { return [rect, rect] }
 
@@ -135,8 +107,7 @@ struct TreemapView: View {
         ]
     }
 
-    // Three items: one large on left, two stacked on right
-    private func layoutThreeItems(items: [TreemapItem], in rect: CGRect) -> [CGRect] {
+    static func layoutThreeItems(items: [TreemapItem], in rect: CGRect) -> [CGRect] {
         let total = items.reduce(0) { $0 + $1.marketValue }
         guard total > 0 else {
             let w = rect.width / 2
@@ -162,8 +133,7 @@ struct TreemapView: View {
         ]
     }
 
-    // Four items: 2x2 grid with proportional sizing
-    private func layoutFourItems(items: [TreemapItem], in rect: CGRect) -> [CGRect] {
+    static func layoutFourItems(items: [TreemapItem], in rect: CGRect) -> [CGRect] {
         let total = items.reduce(0) { $0 + $1.marketValue }
         guard total > 0 else {
             let halfWidth = rect.width / 2
@@ -176,19 +146,16 @@ struct TreemapView: View {
             ]
         }
 
-        // Top row: items[0] and items[1]
         let topTotal = items[0].marketValue + items[1].marketValue
         let bottomTotal = items[2].marketValue + items[3].marketValue
         let topRatio = topTotal / total
         let topHeight = rect.height * topRatio
         let bottomHeight = rect.height - topHeight
 
-        // Top row proportions
         let topLeftRatio = topTotal > 0 ? items[0].marketValue / topTotal : 0.5
         let topLeftWidth = rect.width * topLeftRatio
         let topRightWidth = rect.width - topLeftWidth
 
-        // Bottom row proportions
         let bottomLeftRatio = bottomTotal > 0 ? items[2].marketValue / bottomTotal : 0.5
         let bottomLeftWidth = rect.width * bottomLeftRatio
         let bottomRightWidth = rect.width - bottomLeftWidth
@@ -201,8 +168,7 @@ struct TreemapView: View {
         ]
     }
 
-    // Five items: one large on top, four below in 2x2 with proportional sizing
-    private func layoutFiveItems(items: [TreemapItem], in rect: CGRect) -> [CGRect] {
+    static func layoutFiveItems(items: [TreemapItem], in rect: CGRect) -> [CGRect] {
         let total = items.reduce(0) { $0 + $1.marketValue }
         guard total > 0 else {
             let topHeight = rect.height * 0.45
@@ -217,16 +183,13 @@ struct TreemapView: View {
             ]
         }
 
-        // Top item takes proportional height based on its value
         let topRatio = items[0].marketValue / total
         let topHeight = max(rect.height * 0.3, min(rect.height * topRatio * 1.5, rect.height * 0.55))
         let bottomHeight = rect.height - topHeight
 
-        // Bottom 4 items in 2x2 grid with proportional sizing
         let bottomItems = Array(items[1...4])
         let bottomTotal = bottomItems.reduce(0) { $0 + $1.marketValue }
 
-        // Row 1 (items[1], items[2])
         let row1Total = items[1].marketValue + items[2].marketValue
         let row2Total = items[3].marketValue + items[4].marketValue
         let row1Ratio = bottomTotal > 0 ? row1Total / bottomTotal : 0.5
@@ -250,8 +213,7 @@ struct TreemapView: View {
         ]
     }
 
-    // Six items: 3x2 grid with proportional sizing
-    private func layoutSixItems(items: [TreemapItem], in rect: CGRect) -> [CGRect] {
+    static func layoutSixItems(items: [TreemapItem], in rect: CGRect) -> [CGRect] {
         let total = items.reduce(0) { $0 + $1.marketValue }
         guard total > 0 else {
             let colWidth = rect.width / 2
@@ -266,12 +228,10 @@ struct TreemapView: View {
             ]
         }
 
-        // Calculate row totals
         let row1Total = items[0].marketValue + items[1].marketValue
         let row2Total = items[2].marketValue + items[3].marketValue
         let row3Total = items[4].marketValue + items[5].marketValue
 
-        // Calculate row heights proportionally
         let row1Ratio = row1Total / total
         let row2Ratio = row2Total / total
         let row3Ratio = row3Total / total
@@ -280,7 +240,6 @@ struct TreemapView: View {
         let row2Height = rect.height * row2Ratio
         let row3Height = rect.height * row3Ratio
 
-        // Calculate widths within each row
         let item0Ratio = row1Total > 0 ? items[0].marketValue / row1Total : 0.5
         let item0Width = rect.width * item0Ratio
         let item1Width = rect.width - item0Width
@@ -307,8 +266,7 @@ struct TreemapView: View {
         ]
     }
 
-    // Squarified treemap algorithm for 7+ items
-    private func squarifiedLayout(items: [TreemapItem], in rect: CGRect) -> [CGRect] {
+    static func squarifiedLayout(items: [TreemapItem], in rect: CGRect) -> [CGRect] {
         guard !items.isEmpty else { return [] }
 
         var results: [CGRect] = []
@@ -317,7 +275,6 @@ struct TreemapView: View {
 
         let totalValue = items.reduce(0) { $0 + $1.marketValue }
         guard totalValue > 0 else {
-            // Equal distribution fallback
             let cols = 2
             let rows = (items.count + cols - 1) / cols
             let cellWidth = rect.width / CGFloat(cols)
@@ -352,7 +309,6 @@ struct TreemapView: View {
             results.append(contentsOf: rowRects)
             remainingItems.removeFirst(rowItems.count)
 
-            // Update remaining rect
             if !rowRects.isEmpty {
                 let isHorizontal = remainingRect.width >= remainingRect.height
                 if isHorizontal {
@@ -378,7 +334,7 @@ struct TreemapView: View {
         return results
     }
 
-    private func getNextRow(items: [TreemapItem], totalValue: Double, containerRect: CGRect) -> [TreemapItem] {
+    private static func getNextRow(items: [TreemapItem], totalValue: Double, containerRect: CGRect) -> [TreemapItem] {
         guard !items.isEmpty else { return [] }
 
         var row: [TreemapItem] = []
@@ -399,7 +355,7 @@ struct TreemapView: View {
         return row.isEmpty ? [items[0]] : row
     }
 
-    private func worstAspectRatio(for items: [TreemapItem], totalValue: Double, containerRect: CGRect) -> CGFloat {
+    private static func worstAspectRatio(for items: [TreemapItem], totalValue: Double, containerRect: CGRect) -> CGFloat {
         guard !items.isEmpty, totalValue > 0 else { return .infinity }
 
         let rowValue = items.reduce(0) { $0 + $1.marketValue }
@@ -425,7 +381,7 @@ struct TreemapView: View {
         return worstRatio
     }
 
-    private func layoutRow(items: [TreemapItem], totalValue: Double, containerRect: CGRect) -> [CGRect] {
+    private static func layoutRow(items: [TreemapItem], totalValue: Double, containerRect: CGRect) -> [CGRect] {
         guard !items.isEmpty, totalValue > 0 else { return [] }
 
         let rowValue = items.reduce(0) { $0 + $1.marketValue }
@@ -470,6 +426,38 @@ struct TreemapView: View {
         }
 
         return rects
+    }
+}
+
+// MARK: - Treemap View
+
+struct TreemapView: View {
+    let positions: [AlpacaPosition]
+    let spacing: CGFloat = 6
+
+    private var items: [TreemapItem] {
+        let totalValue = positions.reduce(0) { $0 + $1.marketValueValue }
+        return positions
+            .map { TreemapItem(from: $0, totalValue: totalValue) }
+            .sorted { $0.marketValue > $1.marketValue }
+    }
+
+    var body: some View {
+        TreemapLayoutView(items: items, spacing: spacing)
+        .frame(height: calculateHeight(for: positions.count))
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: positions.count)
+    }
+
+    // MARK: - Height Calculation
+
+    private func calculateHeight(for count: Int) -> CGFloat {
+        switch count {
+        case 0: return 0
+        case 1: return 120
+        case 2...4: return 220
+        case 5...6: return 320
+        default: return min(CGFloat(((count + 1) / 2) * 110), 450)
+        }
     }
 }
 
