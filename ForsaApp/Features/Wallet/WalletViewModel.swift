@@ -116,8 +116,11 @@ class WalletViewModel: ObservableObject {
             hasLoadedOnce = true
             return
         }
-        
-        isLoading = true
+
+        // Only show loading indicator on initial load, not on refresh
+        if !hasLoadedOnce {
+            isLoading = true
+        }
         errorMessage = nil
         
         do {
@@ -190,10 +193,14 @@ class WalletViewModel: ObservableObject {
             hasLoadedOnce = true
             
         } catch {
-            errorMessage = WalletStrings.failedToLoadData
+            // Only show error message if this is the initial load (no data yet)
+            // During refresh, silently fail to avoid disrupting the user experience
+            if !hasLoadedOnce {
+                errorMessage = WalletStrings.failedToLoadData
+            }
             hasLoadedOnce = true
         }
-        
+
         isLoading = false
     }
 }

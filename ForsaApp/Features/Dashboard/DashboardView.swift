@@ -27,7 +27,7 @@ struct DashboardView: View {
             ZStack {
                 Color.backgroundPrimary.ignoresSafeArea()
 
-                if viewModel.isLoading && !viewModel.hasLoadedOnce {
+                if !viewModel.hasLoadedOnce {
                     DashboardLoadingView()
                         .transition(.opacity)
                 } else {
