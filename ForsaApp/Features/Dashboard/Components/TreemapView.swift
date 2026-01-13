@@ -32,39 +32,59 @@ struct TreemapItem: Identifiable {
     }
 }
 
-// MARK: - Treemap Layout View (Handles absolute positioning)
+// MARK: - Treemap Layout View (Grid-based, non-overlapping)
 
 private struct TreemapLayoutView: View {
     let items: [TreemapItem]
     let spacing: CGFloat
 
+    private let minTileHeight: CGFloat = 100
+
     var body: some View {
-        GeometryReader { geometry in
-            let rects = calculateRects(in: geometry.size)
-
-            ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                if index < rects.count {
-                    let rect = rects[index]
-                    let insetRect = rect.insetBy(dx: spacing / 2, dy: spacing / 2)
-
-                    TreemapTile(
-                        symbol: item.symbol,
-                        allocationPercentage: item.allocationPercentage,
-                        changePercentage: item.changePercentage,
-                        marketValue: item.marketValue
-                    )
-                    .frame(width: max(0, insetRect.width), height: max(0, insetRect.height))
-                    .offset(x: insetRect.minX, y: insetRect.minY)
+        VStack(spacing: spacing) {
+            ForEach(Array(layoutRows().enumerated()), id: \.offset) { _, row in
+                HStack(spacing: spacing) {
+                    ForEach(row, id: \.id) { item in
+                        TreemapTile(
+                            symbol: item.symbol,
+                            allocationPercentage: item.allocationPercentage,
+                            changePercentage: item.changePercentage,
+                            marketValue: item.marketValue
+                        )
+                        .frame(minHeight: calculateTileHeight(for: item))
+                    }
                 }
             }
         }
     }
 
-    private func calculateRects(in size: CGSize) -> [CGRect] {
-        TreemapCalculator.calculateLayout(
-            items: items,
-            in: CGRect(origin: .zero, size: size)
-        )
+    private func calculateTileHeight(for item: TreemapItem) -> CGFloat {
+        let baseHeight: CGFloat = minTileHeight
+        let maxAdditional: CGFloat = 80
+        let additionalHeight = maxAdditional * (item.allocationPercentage / 100)
+        return baseHeight + additionalHeight
+    }
+
+    private func layoutRows() -> [[TreemapItem]] {
+        guard !items.isEmpty else { return [] }
+
+        var rows: [[TreemapItem]] = []
+        var remainingItems = items
+
+        if let first = remainingItems.first, first.allocationPercentage > 40 {
+            rows.append([remainingItems.removeFirst()])
+        }
+
+        while !remainingItems.isEmpty {
+            if remainingItems.count >= 2 {
+                let pair = [remainingItems.removeFirst(), remainingItems.removeFirst()]
+                rows.append(pair)
+            } else {
+                rows.append([remainingItems.removeFirst()])
+            }
+        }
+
+        return rows
     }
 }
 
@@ -444,20 +464,7 @@ struct TreemapView: View {
 
     var body: some View {
         TreemapLayoutView(items: items, spacing: spacing)
-        .frame(height: calculateHeight(for: positions.count))
-        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: positions.count)
-    }
-
-    // MARK: - Height Calculation
-
-    private func calculateHeight(for count: Int) -> CGFloat {
-        switch count {
-        case 0: return 0
-        case 1: return 120
-        case 2...4: return 220
-        case 5...6: return 320
-        default: return min(CGFloat(((count + 1) / 2) * 110), 450)
-        }
+            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: positions.count)
     }
 }
 
