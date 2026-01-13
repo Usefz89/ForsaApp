@@ -276,7 +276,7 @@ struct PortfolioBottomSheet: View {
                     .foregroundColor(.textTertiary)
             }
 
-            TreemapView(positions: positions)
+            AssetAllocationTreemapView(positions: positions)
                 .animation(.spring(response: 0.3, dampingFraction: 0.8), value: positions.count)
         }
     }
